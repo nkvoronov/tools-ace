@@ -8,7 +8,7 @@ from urlparse import urlsplit, urlunsplit
 import base64
 
 from httplib import *
-from httplib import HTTPS_PORT  # This is not imported with just '*'
+from httplib import HTTPS_PORT # This is not imported with just '*'
 import SSL
 
 class HTTPSConnection(HTTPConnection):
@@ -59,7 +59,7 @@ class HTTPSConnection(HTTPConnection):
                 self.sock = sock
                 sock = None
                 return
-            except socket.error as e:
+            except socket.error, e:
                 # Other exception are probably SSL-related, in that case we
                 # abort and the exception is forwarded to the caller.
                 error = e
@@ -123,7 +123,7 @@ class ProxyHTTPSConnection(HTTPSConnection):
     through the proxy.
     """
 
-    _ports = {'http': 80, 'https': 443}
+    _ports = {'http' : 80, 'https' : 443}
     _AUTH_HEADER = "Proxy-Authorization"
     _UA_HEADER = "User-Agent"
 
@@ -142,13 +142,13 @@ class ProxyHTTPSConnection(HTTPSConnection):
         self._proxy_UA = None
 
     def putrequest(self, method, url, skip_host=0, skip_accept_encoding=0):
-        # putrequest is called before connect, so can interpret url and get
-        # real host/port to be used to make CONNECT request to proxy
+        #putrequest is called before connect, so can interpret url and get
+        #real host/port to be used to make CONNECT request to proxy
         proto, netloc, path, query, fragment = urlsplit(url)
         if not proto:
-            raise ValueError("unknown URL type: %s" % url)
+            raise ValueError, "unknown URL type: %s" % url
 
-        # get host & port
+        #get host & port
         try:
             username_password, host_port = netloc.split('@')
         except ValueError:
@@ -158,17 +158,19 @@ class ProxyHTTPSConnection(HTTPSConnection):
             host, port = host_port.split(':')
         except ValueError:
             host = host_port
-            # try to get port from proto
+            #try to get port from proto
             try:
                 port = self._ports[proto]
             except KeyError:
-                raise ValueError("unknown protocol for: %s" % url)
+                raise ValueError, "unknown protocol for: %s" % url
 
         self._real_host = host
         self._real_port = int(port)
         rest = urlunsplit((None, None, path, query, fragment))
-        HTTPSConnection.putrequest(self, method, rest, skip_host,
-                                   skip_accept_encoding)
+        if sys.version_info < (2,4):
+            HTTPSConnection.putrequest(self, method, rest, skip_host)
+        else:
+            HTTPSConnection.putrequest(self, method, rest, skip_host, skip_accept_encoding)
 
     def putheader(self, header, value):
         # Store the auth header if passed in.
@@ -191,16 +193,16 @@ class ProxyHTTPSConnection(HTTPSConnection):
     def connect(self):
         HTTPConnection.connect(self)
 
-        # send proxy CONNECT request
+        #send proxy CONNECT request
         self.sock.sendall(self._get_connect_msg())
         response = HTTPResponse(self.sock)
         response.begin()
 
         code = response.status
         if code != 200:
-            # proxy returned and error, abort connection, and raise exception
+            #proxy returned and error, abort connection, and raise exception
             self.close()
-            raise socket.error("Proxy connection failed: %d" % code)
+            raise socket.error, "Proxy connection failed: %d" % code
 
         self._start_ssl()
 

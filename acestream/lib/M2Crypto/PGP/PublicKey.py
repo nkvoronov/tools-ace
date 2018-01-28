@@ -28,15 +28,15 @@ class PublicKey:
 
     def add_signature(self, userid, s_pkt):
         assert isinstance(s_pkt, signature_packet)
-        assert userid in self._userid
-        if userid in self._signature:
+        assert self._userid.has_key(userid)
+        if self._signature.has_key(userid):
             self._signature.append(s_pkt)
         else:
             self._signature = [s_pkt]
-
+        
     def __getitem__(self, id):
         return self._userid[id]
-
+    
     def __setitem__(self, *args):
         raise NotImplementedError
 

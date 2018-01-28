@@ -2,18 +2,16 @@
 
 Copyright (c) 1999-2004 Ng Pheng Siong. All rights reserved."""
 
-import m2
+import m2 
+
+# Deprecated
+from m2 import bio_do_handshake as bio_do_ssl_handshake
 
 from cStringIO import StringIO
-# Deprecated
-from m2 import bio_do_handshake as bio_do_ssl_handshake  # noqa
 
-
-class BIOError(Exception):
-    pass
+class BIOError(Exception): pass
 
 m2.bio_init(BIOError)
-
 
 class BIO:
 
@@ -27,7 +25,7 @@ class BIO:
         self._close_cb = _close_cb
         self.closed = 0
         self.write_closed = 0
-
+        
     def __del__(self):
         if self._pyfree:
             self.m2_bio_free(self.bio)
@@ -46,34 +44,33 @@ class BIO:
 
     def read(self, size=None):
         if not self.readable():
-            raise IOError('cannot read')
+            raise IOError, 'cannot read'
         if size is None:
             buf = StringIO()
             while 1:
                 data = m2.bio_read(self.bio, 4096)
-                if not data:
-                    break
+                if not data: break
                 buf.write(data)
             return buf.getvalue()
         elif size == 0:
             return ''
         elif size < 0:
-            raise ValueError('read count is negative')
+            raise ValueError, 'read count is negative'
         else:
             return m2.bio_read(self.bio, size)
 
     def readline(self, size=4096):
         if not self.readable():
-            raise IOError('cannot read')
+            raise IOError, 'cannot read'
         buf = m2.bio_gets(self.bio, size)
         return buf
 
     def readlines(self, sizehint='ignored'):
         if not self.readable():
-            raise IOError('cannot read')
-        lines = []
+            raise IOError, 'cannot read'
+        lines=[]
         while 1:
-            buf = m2.bio_gets(self.bio, 4096)
+            buf=m2.bio_gets(self.bio, 4096)
             if buf is None:
                 break
             lines.append(buf)
@@ -81,10 +78,10 @@ class BIO:
 
     def writeable(self):
         return (not self.closed) and (not self.write_closed)
-
+       
     def write(self, data):
         if not self.writeable():
-            raise IOError('cannot write')
+            raise IOError, 'cannot write'
         return m2.bio_write(self.bio, data)
 
     def write_close(self):
@@ -107,10 +104,10 @@ class BIO:
     def should_retry(self):
         """
         Can the call be attempted again, or was there an error
-        ie do_handshake
-
+        ie do_handshake 
+       
         """
-        return m2.bio_should_retry(self.bio)
+        return m2.bio_should_retry(self.bio) 
 
     def should_read(self):
         """
@@ -118,31 +115,23 @@ class BIO:
         should read more data
         """
         return m2.bio_should_read(self.bio)
-
+    
     def should_write(self):
         """
         Returns whether the cause of the condition is the bio
         should write more data
         """
         return m2.bio_should_write(self.bio)
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *args):
-        self.close()
-
-
+    
 class MemoryBuffer(BIO):
 
     """
-    Object interface to BIO_s_mem.
-
-    Empirical testing suggests that this class performs less well than
-    cStringIO, because cStringIO is implemented in C, whereas this class
-    is implemented in Python. Thus, the recommended practice is to use
-    cStringIO for regular work and convert said cStringIO object to
-    a MemoryBuffer object only when necessary.
+    Object interface to BIO_s_mem. 
+    
+    Empirical testing suggests that this class performs less well than cStringIO, 
+    because cStringIO is implemented in C, whereas this class is implemented in 
+    Python. Thus, the recommended practice is to use cStringIO for regular work and 
+    convert said cStringIO object to a MemoryBuffer object only when necessary.
     """
 
     def __init__(self, data=None):
@@ -157,12 +146,12 @@ class MemoryBuffer(BIO):
 
     def read(self, size=0):
         if not self.readable():
-            raise IOError('cannot read')
+            raise IOError, 'cannot read'
         if size:
             return m2.bio_read(self.bio, size)
         else:
             return m2.bio_read(self.bio, m2.bio_ctrl_pending(self.bio))
-
+            
     # Backwards-compatibility.
     getvalue = read_all = read
 
@@ -176,8 +165,8 @@ class MemoryBuffer(BIO):
 class File(BIO):
 
     """
-    Object interface to BIO_s_fp.
-
+    Object interface to BIO_s_fp. 
+    
     This class interfaces Python to OpenSSL functions that expect BIO *. For
     general file manipulation in Python, use Python's builtin file object.
     """
@@ -193,7 +182,6 @@ class File(BIO):
         if self.close_pyfile:
             self.pyfile.close()
 
-
 def openfile(filename, mode='rb'):
     return File(open(filename, mode))
 
@@ -201,8 +189,8 @@ def openfile(filename, mode='rb'):
 class IOBuffer(BIO):
 
     """
-    Object interface to BIO_f_buffer.
-
+    Object interface to BIO_f_buffer. 
+    
     Its principal function is to be BIO_push()'ed on top of a BIO_f_ssl, so
     that makefile() of said underlying SSL socket works.
     """
@@ -215,12 +203,12 @@ class IOBuffer(BIO):
         self.io = m2.bio_new(m2.bio_f_buffer())
         self.bio = m2.bio_push(self.io, under_bio._ptr())
         # This reference keeps the underlying BIO alive while we're not closed.
-        self._under_bio = under_bio
+        self._under_bio = under_bio 
         if 'w' in mode:
             self.write_closed = 0
         else:
             self.write_closed = 1
-
+            
     def __del__(self):
         if getattr(self, '_pyfree', 0):
             self.m2_bio_pop(self.bio)
@@ -246,7 +234,7 @@ class CipherStream(BIO):
         self.obio = obio
         self.bio = m2.bio_new(m2.bio_f_cipher())
         self.closed = 0
-
+        
     def __del__(self):
         if not getattr(self, 'closed', 1):
             self.close()
@@ -255,42 +243,44 @@ class CipherStream(BIO):
         self.m2_bio_pop(self.bio)
         self.m2_bio_free(self.bio)
         self.closed = 1
-
+        
     def write_close(self):
         self.obio.write_close()
 
     def set_cipher(self, algo, key, iv, op):
         cipher = getattr(m2, algo, None)
         if cipher is None:
-            raise ValueError('unknown cipher', algo)
-        m2.bio_set_cipher(self.bio, cipher(), key, iv, op)
+            raise ValueError, ('unknown cipher', algo)
+        m2.bio_set_cipher(self.bio, cipher(), key, iv, op) 
         m2.bio_push(self.bio, self.obio._ptr())
 
 
 class SSLBio(BIO):
     """
-    Object interface to BIO_f_ssl
+    Object interface to BIO_f_ssl 
     """
     def __init__(self, _pyfree=1):
         BIO.__init__(self, _pyfree)
         self.bio = m2.bio_new(m2.bio_f_ssl())
         self.closed = 0
 
+   
     def set_ssl(self, conn, close_flag=m2.bio_noclose):
         """
         Sets the bio to the SSL pointer which is
-        contained in the connection object.
+        contained in the connection object.  
         """
-        self._pyfree = 0
+        self._pyfree = 0 
         m2.bio_set_ssl(self.bio, conn.ssl, close_flag)
         if close_flag == m2.bio_noclose:
             conn.set_ssl_close_flag(m2.bio_close)
-
+       
     def do_handshake(self):
         """
         Do the handshake.
-
+        
         Return 1 if the handshake completes
         Return 0 or a negative number if there is a problem
         """
         return m2.bio_do_handshake(self.bio)
+

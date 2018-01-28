@@ -22,7 +22,7 @@ class DH:
         assert m2.dh_type_check(dh)
         self.dh = dh
         self._pyfree = _pyfree
-
+        
     def __del__(self):
         if getattr(self, '_pyfree', 0):
             self.m2_dh_free(self.dh)
@@ -41,9 +41,9 @@ class DH:
 
     def __setattr__(self, name, value):
         if name in ('p', 'g'):
-            raise DHError('set (p, g) via set_params()')
-        elif name in ('pub', 'priv'):
-            raise DHError('generate (pub, priv) via gen_key()')
+            raise DHError, 'set (p, g) via set_params()'
+        elif name in ('pub','priv'):
+            raise DHError, 'generate (pub, priv) via gen_key()'
         else:
             self.__dict__[name] = value
 
@@ -53,10 +53,10 @@ class DH:
     def check_params(self):
         assert m2.dh_type_check(self.dh), "'dh' type error"
         return m2.dh_check(self.dh)
-
+        
     def gen_key(self):
         assert m2.dh_type_check(self.dh), "'dh' type error"
-        m2.dh_generate_key(self.dh)
+        m2.dh_generate_key(self.dh)   
 
     def compute_key(self, pubkey):
         assert m2.dh_type_check(self.dh), "'dh' type error"
@@ -87,9 +87,10 @@ def set_params(p, g):
     return DH(dh, 1)
 
 
-# def free_params(cptr):
+#def free_params(cptr):
 #    m2.dh_free(cptr)
 
 
 DH_GENERATOR_2 = m2.DH_GENERATOR_2
 DH_GENERATOR_5 = m2.DH_GENERATOR_5
+

@@ -5,12 +5,12 @@ Copyright (c) 1999-2002 Ng Pheng Siong. All rights reserved."""
 # M2Crypto
 import Rand, m2
 
-# Python. Cookie is bundled with Python 2.x.
+# Python. Cookie is bundled with Python 2.x. 
 import Cookie, binascii, re, time
 
 
 _MIX_FORMAT = 'exp=%s&data=%s&digest='
-_MIX_RE = re.compile('exp=(\d+\.\d+)&data=(.+)&digest=(\S*)')
+_MIX_RE     = re.compile('exp=(\d+\.\d+)&data=(.+)&digest=(\S*)')
 
 def mix(expiry, data, format=_MIX_FORMAT):
     return format % (repr(expiry), data)
@@ -38,10 +38,10 @@ class AuthCookieJar:
 
     def __init__(self):
         self._key = Rand.rand_bytes(self._keylen)
-
+    
     def _hmac(self, key, data):
         return binascii.b2a_base64(m2.hmac(key, data, m2.sha1()))[:-1]
-
+        
     def makeCookie(self, expiry, data):
         dough = mix(expiry, data)
         return AuthCookie(expiry, data, dough, self._hmac(self._key, dough))
@@ -57,9 +57,9 @@ class AuthCookieJar:
             and (c.output() == cookie.output())
 
     def isGoodCookieString(self, cookie_str):
-        c = Cookie.SmartCookie()
+        c = Cookie.SmartCookie()        
         c.load(cookie_str)
-        if _TOKEN not in c:
+        if not c.has_key(_TOKEN):
             return 0
         undough = unmix3(c[_TOKEN].value)
         if undough is None:
@@ -70,7 +70,7 @@ class AuthCookieJar:
 
 
 class AuthCookie:
-
+    
     def __init__(self, expiry, data, dough, mac):
         self._expiry = expiry
         self._data = data
@@ -104,10 +104,11 @@ class AuthCookie:
         """Return 1 if the cookie has expired, 0 otherwise."""
         return (time.time() > self._expiry)
 
-    # XXX Following methods are for WebKit only. These should be pushed
+    # XXX Following methods are for WebKit only. These should be pushed 
     # to WKAuthCookie.
     def name(self):
         return self._name
 
     def headerValue(self):
         return self.value()
+

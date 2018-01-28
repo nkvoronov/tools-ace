@@ -10,7 +10,7 @@ Copyright 2008 Heikki Toivonen. All rights reserved.
 __all__ = ['SSLVerificationError', 'NoCertificate', 'WrongCertificate',
            'WrongHost', 'Checker']
 
-from M2Crypto import m2
+from M2Crypto import util, EVP, m2
 import socket
 import re
 
@@ -29,7 +29,7 @@ class WrongHost(SSLVerificationError):
         This exception will be raised if the certificate returned by the
         peer was issued for a different host than we tried to connect to.
         This could be due to a server misconfiguration or an active attack.
-
+        
         @param expectedHost: The name of the host we expected to find in the
                              certificate.
         @param actualHost:   The name of the host we actually found in the
@@ -39,24 +39,24 @@ class WrongHost(SSLVerificationError):
         """
         if fieldName not in ('commonName', 'subjectAltName'):
             raise ValueError('Unknown fieldName, should be either commonName or subjectAltName')
-
+        
         SSLVerificationError.__init__(self)
         self.expectedHost = expectedHost
         self.actualHost = actualHost
         self.fieldName = fieldName
-
+        
     def __str__(self):
         s = 'Peer certificate %s does not match host, expected %s, got %s' \
-                % (self.fieldName, self.expectedHost, self.actualHost)
+               % (self.fieldName, self.expectedHost, self.actualHost)
         if isinstance(s, unicode):
             s = s.encode('utf8')
         return s
 
 
 class Checker:
-
+    
     numericIpMatch = re.compile('^[0-9]+(\.[0-9]+)*$')
-
+    
     def __init__(self, host=None, peerCertHash=None, peerCertDigest='sha1'):
         self.host = host
         self.fingerprint = peerCertHash
@@ -68,35 +68,21 @@ class Checker:
 
         if host is not None:
             self.host = host
-
+        
         if self.fingerprint:
             if self.digest not in ('sha1', 'md5'):
                 raise ValueError('unsupported digest "%s"' %(self.digest))
 
-            if self.digest == 'sha1':
-                expected_len = 40
-            elif self.digest == 'md5':
-                expected_len = 32
-            else:
-                raise ValueError('Unexpected digest {0}'.format(self.digest))
-
-            if len(self.fingerprint) != expected_len:
-                raise WrongCertificate(
-                        '''peer certificate fingerprint length does not match
-                        fingerprint: {0}
-                        expected = {1}
-                        observed = {2}'''.format(self.fingerprint,
-                            expected_len,
-                            len(self.fingerprint)))
-
-            expected_fingerprint = self.fingerprint
-            observed_fingerprint = peerCert.get_fingerprint(md=self.digest)
-            if observed_fingerprint != expected_fingerprint:
-                raise WrongCertificate('''
-                peer certificate fingerprint does not match
-                expected = {0},
-                observed = {1}'''.format(expected_fingerprint,
-                                         observed_fingerprint))
+            if (self.digest == 'sha1' and len(self.fingerprint) != 40) or \
+               (self.digest == 'md5' and len(self.fingerprint) != 32):
+                raise WrongCertificate('peer certificate fingerprint length does not match')
+            
+            der = peerCert.as_der()
+            md = EVP.MessageDigest(self.digest)
+            md.update(der)
+            digest = md.final()
+            if util.octx_to_num(digest) != int(self.fingerprint, 16):
+                raise WrongCertificate('peer certificate fingerprint does not match')
 
         if self.host:
             hostValidationPassed = False
@@ -108,7 +94,7 @@ class Checker:
                 if self._splitSubjectAltName(self.host, subjectAltName):
                     hostValidationPassed = True
                 elif self.useSubjectAltNameOnly:
-                    raise WrongHost(expectedHost=self.host,
+                    raise WrongHost(expectedHost=self.host, 
                                     actualHost=subjectAltName,
                                     fieldName='subjectAltName')
             except LookupError:
@@ -181,7 +167,7 @@ class Checker:
                 if self._matchIPAddress(host, certHost[11:]):
                     return True
         return False
-
+        
 
     def _match(self, host, certHost):
         """

@@ -43,7 +43,10 @@ import m2urllib
 # Backwards compatibility.
 urllib2 = m2urllib
 
-import m2urllib2
+import sys
+if sys.version_info >= (2,4):
+    import m2urllib2
+del sys
 
 import ftpslib
 import httpslib
@@ -51,7 +54,7 @@ import m2xmlrpclib
 import threading
 import util
 
-encrypt = 1
-decrypt = 0
+encrypt=1
+decrypt=0
 
 _m2crypto.lib_init()

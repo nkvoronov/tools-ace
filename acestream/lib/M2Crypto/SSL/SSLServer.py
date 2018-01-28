@@ -1,5 +1,3 @@
-from __future__ import print_function
-
 """SSLServer
 
 Copyright (c) 1999-2002 Ng Pheng Siong. All rights reserved."""
@@ -17,7 +15,7 @@ from M2Crypto import m2
 
 class SSLServer(SocketServer.TCPServer):
     def __init__(self, server_address, RequestHandlerClass, ssl_context, bind_and_activate=True):
-        """
+        """ 
         Superclass says: Constructor. May be extended, do not override.
         This class says: Ho-hum.
         """
@@ -26,7 +24,7 @@ class SSLServer(SocketServer.TCPServer):
         self.socket=Connection(self.ssl_ctx)
         if bind_and_activate:
             self.server_bind()
-            self.server_activate()
+            self.server_activate()        
 
     def handle_request(self):
         request = None
@@ -39,10 +37,10 @@ class SSLServer(SocketServer.TCPServer):
             self.handle_error(request, client_address)
 
     def handle_error(self, request, client_address):
-        print('-'*40)
+        print '-'*40
         import traceback
         traceback.print_exc()
-        print('-'*40)
+        print '-'*40
 
 
 class ForkingSSLServer(SocketServer.ForkingMixIn, SSLServer):

@@ -17,13 +17,13 @@ m2.evp_init(EVPError)
 def pbkdf2(password, salt, iter, keylen):
     """
     Derive a key from password using PBKDF2 algorithm specified in RFC 2898.
-
+    
     @param password: Derive the key from this password.
     @type password:  str
     @param salt:     Salt.
     @type salt:      str
     @param iter:     Number of iterations to perform.
-    @type iter:      int
+    @type iter:      int 
     @param keylen:   Length of key to produce.
     @type keylen:    int
     @return:         Key.
@@ -40,11 +40,11 @@ class MessageDigest:
     def __init__(self, algo):
         md = getattr(m2, algo, None)
         if md is None:
-            raise ValueError('unknown algorithm', algo)
-        self.md = md()
-        self.ctx = m2.md_ctx_new()
+            raise ValueError, ('unknown algorithm', algo)
+        self.md=md()
+        self.ctx=m2.md_ctx_new()
         m2.digest_init(self.ctx, self.md)
-
+        
     def __del__(self):
         if getattr(self, 'ctx', None):
             self.m2_md_ctx_free(self.ctx)
@@ -52,7 +52,7 @@ class MessageDigest:
     def update(self, data):
         """
         Add data to be digested.
-
+        
         @return: -1 for Python error, 1 for success, 0 for OpenSSL failure.
         """
         return m2.digest_update(self.ctx, data)
@@ -61,21 +61,21 @@ class MessageDigest:
         return m2.digest_final(self.ctx)
 
     # Deprecated.
-    digest = final
+    digest = final 
 
 
 class HMAC:
-
+    
     m2_hmac_ctx_free = m2.hmac_ctx_free
 
     def __init__(self, key, algo='sha1'):
         md = getattr(m2, algo, None)
         if md is None:
-            raise ValueError('unknown algorithm', algo)
-        self.md = md()
-        self.ctx = m2.hmac_ctx_new()
+            raise ValueError, ('unknown algorithm', algo)
+        self.md=md()
+        self.ctx=m2.hmac_ctx_new()
         m2.hmac_init(self.ctx, key, self.md)
-
+        
     def __del__(self):
         if getattr(self, 'ctx', None):
             self.m2_hmac_ctx_free(self.ctx)
@@ -88,13 +88,13 @@ class HMAC:
 
     def final(self):
         return m2.hmac_final(self.ctx)
-
-    digest = final
+    
+    digest=final
 
 def hmac(key, data, algo='sha1'):
     md = getattr(m2, algo, None)
     if md is None:
-        raise ValueError('unknown algorithm', algo)
+        raise ValueError, ('unknown algorithm', algo)
     return m2.hmac(key, data, md())
 
 
@@ -105,20 +105,20 @@ class Cipher:
     def __init__(self, alg, key, iv, op, key_as_bytes=0, d='md5', salt='12345678', i=1, padding=1):
         cipher = getattr(m2, alg, None)
         if cipher is None:
-            raise ValueError('unknown cipher', alg)
-        self.cipher = cipher()
+            raise ValueError, ('unknown cipher', alg)
+        self.cipher=cipher()
         if key_as_bytes:
             kmd = getattr(m2, d, None)
             if kmd is None:
-                raise ValueError('unknown message digest', d)
+                raise ValueError, ('unknown message digest', d)
             key = m2.bytes_to_key(self.cipher, kmd(), key, salt, iv, i)
-        self.ctx = m2.cipher_ctx_new()
+        self.ctx=m2.cipher_ctx_new()
         m2.cipher_init(self.ctx, self.cipher, key, iv, op)
         self.set_padding(padding)
         del key
-
+        
     def __del__(self):
-        if getattr(self, 'ctx', None):
+        if getattr(self, 'ctx', None):        
             self.m2_cipher_ctx_free(self.ctx)
 
     def update(self, data):
@@ -128,14 +128,14 @@ class Cipher:
         return m2.cipher_final(self.ctx)
 
     def set_padding(self, padding=1):
-        return m2.cipher_set_padding(self.ctx, padding)
+        return m2.cipher_set_padding(self.ctx, padding) 
 
 
 class PKey:
     """
     Public Key
     """
-
+    
     m2_pkey_free = m2.pkey_free
     m2_md_ctx_free = m2.md_ctx_free
 
@@ -147,7 +147,7 @@ class PKey:
             self.pkey = m2.pkey_new()
             self._pyfree = 1
         self._set_context(md)
-
+        
     def __del__(self):
         if getattr(self, '_pyfree', 0):
             self.m2_pkey_free(self.pkey)
@@ -160,7 +160,7 @@ class PKey:
     def _set_context(self, md):
         mda = getattr(m2, md, None)
         if mda is None:
-            raise ValueError('unknown message digest', md)
+            raise ValueError, ('unknown message digest', md)
         self.md = mda()
         self.ctx = m2.md_ctx_new()
 
@@ -239,7 +239,7 @@ class PKey:
         @param capture: If true (default), this PKey object will own the RSA
                         object, meaning that once the PKey object gets
                         deleted it is no longer safe to use the RSA object.
-
+        
         @rtype: int
         @return: Return 1 for success and 0 for failure.
         """
@@ -259,7 +259,7 @@ class PKey:
         rsa_ptr = m2.pkey_get1_rsa(self.pkey)
         if rsa_ptr is None:
             raise ValueError("PKey instance is not holding a RSA key")
-
+        
         rsa = RSA.RSA_pub(rsa_ptr, 1)
         return rsa
 
@@ -277,7 +277,7 @@ class PKey:
 
         @type callback: Python callable
         @param callback: A Python callable object that is invoked
-        to acquire a passphrase with which to protect the key.
+        to acquire a passphrase with which to protect the key. 
         The default is util.passphrase_callback.
         """
         bio = BIO.openfile(file, 'wb')
@@ -297,7 +297,7 @@ class PKey:
 
         @type callback: Python callable
         @param callback: A Python callable object that is invoked
-        to acquire a passphrase with which to protect the key.
+        to acquire a passphrase with which to protect the key. 
         The default is util.passphrase_callback.
         """
         if cipher is None:
@@ -305,7 +305,7 @@ class PKey:
         else:
             proto = getattr(m2, cipher, None)
             if proto is None:
-                raise ValueError('no such cipher %s' % cipher)
+                raise ValueError, 'no such cipher %s' % cipher
             return m2.pkey_write_pem(self.pkey, bio._ptr(), proto(), callback)
 
     def as_pem(self, cipher='aes_128_cbc', callback=util.passphrase_callback):
@@ -319,7 +319,7 @@ class PKey:
 
         @type callback: Python callable
         @param callback: A Python callable object that is invoked
-        to acquire a passphrase with which to protect the key.
+        to acquire a passphrase with which to protect the key. 
         The default is util.passphrase_callback.
         """
         bio = BIO.MemoryBuffer()
@@ -333,19 +333,19 @@ class PKey:
         buf = m2.pkey_as_der(self.pkey)
         bio = BIO.MemoryBuffer(buf)
         return bio.read_all()
-
+   
     def size(self):
         """
         Return the size of the key in bytes.
         """
         return m2.pkey_size(self.pkey)
-
+        
     def get_modulus(self):
         """
         Return the modulus in hex format.
         """
         return m2.pkey_get_modulus(self.pkey)
-
+   
 
 def load_key(file, callback=util.passphrase_callback):
     """
@@ -404,4 +404,5 @@ def load_key_string(string, callback=util.passphrase_callback):
     @return: M2Crypto.EVP.PKey object.
     """
     bio = BIO.MemoryBuffer(string)
-    return load_key_bio(bio, callback)
+    return load_key_bio( bio, callback)
+

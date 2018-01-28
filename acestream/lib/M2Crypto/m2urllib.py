@@ -1,6 +1,4 @@
-from __future__ import print_function
-
-"""M2Crypto enhancement to Python's urllib for handling
+"""M2Crypto enhancement to Python's urllib for handling 
 'https' url's.
 
 Copyright (c) 1999-2003 Ng Pheng Siong. All rights reserved."""
@@ -11,7 +9,7 @@ from urllib import *
 import SSL
 import httpslib
 
-DEFAULT_PROTOCOL = 'sslv23'
+DEFAULT_PROTOCOL='sslv23'
 
 def open_https(self, url, data=None, ssl_context=None):
     if ssl_context is not None and isinstance(ssl_context, SSL.Context):
@@ -38,8 +36,8 @@ def open_https(self, url, data=None, ssl_context=None):
                 user_passwd, realhost = splituser(realhost)
             if user_passwd:
                 selector = "%s://%s%s" % (urltype, realhost, rest)
-        #print("proxy via http:", host, selector)
-    if not host: raise IOError('http error', 'no host given')
+        #print "proxy via http:", host, selector
+    if not host: raise IOError, ('http error', 'no host given')
     if user_passwd:
         import base64
         auth = string.strip(base64.encodestring(user_passwd))
@@ -47,7 +45,7 @@ def open_https(self, url, data=None, ssl_context=None):
         auth = None
     # Start here!
     h = httpslib.HTTPSConnection(host=host, ssl_context=self.ctx)
-    # h.set_debuglevel(1)
+    #h.set_debuglevel(1)
     # Stop here!
     if data is not None:
         h.putrequest('POST', selector)
@@ -66,5 +64,7 @@ def open_https(self, url, data=None, ssl_context=None):
     return urllib.addinfourl(fp, resp.msg, "https:" + url)
     # Stop again.
 
-# Minor brain surgery.
+# Minor brain surgery. 
 URLopener.open_https = open_https
+ 
+
