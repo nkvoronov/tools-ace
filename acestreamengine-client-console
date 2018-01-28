@@ -1,5 +1,3 @@
 #!/bin/bash
 
-export LD_LIBRARY_PATH=/usr/share/acestream/lib
-
-/usr/share/acestream/acestreamengine --lib-path /usr/share/acestream --client-console $1
+/usr/share/acestream/start-engine --client-console $1
