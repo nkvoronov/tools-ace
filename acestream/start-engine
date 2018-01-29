@@ -1,4 +1,4 @@
 #!/bin/sh
 
-ROOT=$(readlink -f $(dirname $0))
+ROOT=/usr/share/acestream
 LD_LIBRARY_PATH=${ROOT}/lib ${ROOT}/acestreamengine --lib-path $ROOT "$@"
