@@ -5,6 +5,8 @@ var RemoteControl = (function() {
     var HLS_MIME_TYPE = "application/vnd.apple.mpegurl";
     var USER_ACTIVITY_TIMEOUT = 65000;
     var EVENTS_UPDATE_INTERVAL = 5000;
+    var FREEZE_LIVE_STATUS_FOR = 5000;
+    var FREEZE_LIVE_POS_FOR = 5000;
 
     var ContentType = {
         VOD: "vod",
@@ -14,6 +16,7 @@ var RemoteControl = (function() {
     var DeviceProtocol = {
         AIRPLAY: "airplay",
         CHROMECAST: "chromecast",
+        ACECAST: "acestreamcast",
     };
 
     var DeviceStatus = {
@@ -24,12 +27,7 @@ var RemoteControl = (function() {
         BUFFERING: 'buffering',
         FINISHED: 'finished',
         DISCONNECTED: 'disconnected',
-    };
-
-    var PlayState = {
-        PLAYING: 'playing',
-        PAUSED: 'paused',
-        IDLE: 'idle'
+        NO_PLAYER: 'no_player',
     };
 
     var gPageId = guid();
@@ -46,7 +44,7 @@ var RemoteControl = (function() {
     var gPlaybackRestarted = false;
 
     var gDeviceStatus = {
-        status: DeviceStatus.UNKNOWN,
+        status: DeviceStatus.DISCONNECTED,
         volume: 0,
         position: 0,
         duration: 0,
@@ -61,6 +59,10 @@ var RemoteControl = (function() {
         peers: 0,
         download: 0,
         upload: 0,
+        isLive: -1,
+        streamIndex: -1,
+        freezeLiveStatusAt: -1,
+        freezeLivePosAt: -1,
     };
 
     var gPlaylist = {
@@ -83,13 +85,19 @@ var RemoteControl = (function() {
 
     function debug() {
         if(gParams.debug) {
-            console.log.apply(console, arguments);
+            try  {
+                console.log.apply(console, arguments);
+            }
+            catch(e) {}
         }
     }
 
     function verbose() {
         if(gParams.verbose) {
-            console.log.apply(console, arguments);
+            try {
+                console.log.apply(console, arguments);
+            }
+            catch(e) {}
         }
     }
 
@@ -140,9 +148,24 @@ var RemoteControl = (function() {
             positiveColor : '#888',
             valueListener: function(value, enddrag) {
                 if(enddrag) {
-                    debug("progress changed: value=" + value + " enddrag=" + enddrag);
+                    var isLive = isPlayingLive();
+                    debug("progress changed: isLive=" + isLive + " value=" + value + " enddrag=" + enddrag);
                     hideMessage("progress");
-                    seek(value);
+
+                    if(isLive == 1) {
+                        if(gEngineStatus.livePosition && gEngineStatus.livePosition.first >= 0) {
+                            var pos = Math.ceil(gEngineStatus.livePosition.first + value);
+                            live_seek(pos);
+
+                            $("#btn-go-live").removeClass("live");
+
+                            gEngineStatus.freezeLivePosAt = Date.now();
+                            gEngineStatus.freezeLiveStatusAt = Date.now();
+                        }
+                    }
+                    else if(isLive == 0) {
+                        seek(value);
+                    }
                 }
                 else {
                     var timeString = seconds2time(value);
@@ -150,11 +173,28 @@ var RemoteControl = (function() {
                 }
             },
             hoverListener: function(value) {
-                if(value === null) {
-                    $("#text-position").text(seconds2time(gDeviceStatus.position));
+                if(isPlayingLive() == 1) {
+                    // live
+                    if(gEngineStatus.livePosition) {
+                        var lp = gEngineStatus.livePosition;
+                        var duration = lp.lastTimestamp - lp.firstTimestamp;
+                        var pieces = lp.last - lp.first;
+
+                        if(duration > 0 && pieces > 0) {
+                            var secondsPerPiece = duration / pieces;
+                            var seconds = (gProgressBar.maxValue - value) * secondsPerPiece;
+                            $("#text-position").text("-" + seconds2time(seconds));
+                        }
+                    }
                 }
                 else {
-                    $("#text-position").text(seconds2time(value));
+                    // VOD
+                    if(value === null) {
+                        $("#text-position").text(seconds2time(gDeviceStatus.position));
+                    }
+                    else {
+                        $("#text-position").text(seconds2time(value));
+                    }
                 }
             }
         });
@@ -193,34 +233,66 @@ var RemoteControl = (function() {
             $(this).removeClass("pressed");
         });
 
+        // go live
+        $("#btn-go-live").on("click", function() {
+            if($(this).hasClass("disabled")) {
+                return;
+            }
+
+            debug("click:go-live");
+            if(gEngineStatus.livePosition && gEngineStatus.livePosition.isLive == 0) {
+                live_seek(-1);
+
+                gProgressBar.setValue(gProgressBar.maxValue);
+                $("#btn-go-live").addClass("live");
+
+                gEngineStatus.freezeLivePosAt = Date.now();
+                gEngineStatus.freezeLiveStatusAt = Date.now();
+            }
+        });
+
+        // play
         $("#btn-play").on("click", function() {
             if($(this).hasClass("disabled")) {
                 return;
             }
-            var action = $(this).data("action");
-            debug("click:play: status=" + gDeviceStatus.status + " prebuffering=" + gPrebuffering + " action=" + action);
+
+            debug("click:play");
             if(!gPrebuffering) {
-                if("restart" == action) {
-                    restartPlayback();
-                }
-                else if("pause" == action) {
-                    pause();
-                }
-                else if("play" == action) {
-                    play();
-                }
+                play();
             }
         });
 
+        // pause
+        $("#btn-pause").on("click", function() {
+            if($(this).hasClass("disabled")) {
+                return;
+            }
+
+            debug("click:pause");
+            if(!gPrebuffering) {
+                pause();
+            }
+        });
+
+        // stop/restart
         $("#btn-stop").on("click", function() {
             if($(this).hasClass("disabled")) {
                 return;
             }
-            debug("click:stop");
-            disconnect();
-            stopEngineSession(true);
-            setCurrentPosition(0);
-            updatePlayButton();
+            var action = $(this).data("action");
+            debug("click:stop: action=" + action);
+
+            if("stop" == action) {
+                disconnect();
+                stopEngineSession(true);
+                setCurrentPosition(0);
+            }
+            else if("restart" == action) {
+                if(!gPrebuffering) {
+                    restartPlayback();
+                }
+            }
         });
 
         $("#btn-select-device").on("click", function() {
@@ -229,6 +301,38 @@ var RemoteControl = (function() {
             }
             debug("click:select-device");
             showAvailablePlayersDialog();
+        });
+
+        $("#btn-select-audio-track").on("click", function() {
+            if($(this).hasClass("disabled")) {
+                return;
+            }
+            debug("click:select-audio-track");
+            showAudioTrackDialog();
+        });
+
+        $("#btn-select-subtitle-track").on("click", function() {
+            if($(this).hasClass("disabled")) {
+                return;
+            }
+            debug("click:select-subtitle-track");
+            showSubtitleTrackDialog();
+        });
+
+        $("#btn-crop").on("click", function() {
+            if($(this).hasClass("disabled")) {
+                return;
+            }
+            debug("click:crop");
+            showCropDialog();
+        });
+
+        $("#btn-select-stream").on("click", function() {
+            if($(this).hasClass("disabled")) {
+                return;
+            }
+            debug("click:select-stream");
+            showStreamDialog();
         });
 
         $("#btn-prev").on("click", function() {
@@ -247,7 +351,7 @@ var RemoteControl = (function() {
             switchPlaylistItem(1);
         });
 
-
+        // select device popup events
         $("#select-device-popup .dialog-close").on("click", function() {
             hideSelectDevicePopup();
             clearMessages();
@@ -269,17 +373,24 @@ var RemoteControl = (function() {
 
                 var restartFromLastPosition = true;
 
-                // restart if prev device was aircast
-                if(gEngineSession
+                if(device.protocol == DeviceProtocol.ACECAST) {
+                    // stop local engine session when switching to acecast
+                    if(gEngineSession) {
+                        debug("stop local engine session when switching to acecast");
+                        stopEngineSession(true);
+                    }
+                }
+                else if(gEngineSession
                     && gEngineSession.playback_url
                     && gLastSelectedDevice
                     && "aircast" === gLastSelectedDevice.type) {
+                    // use current engine session if prev device was aircast
                     debug("use current engine session:", gEngineSession);
                 }
                 else {
                     // reset engine session if prev device was local player
                     debug("reset engine session");
-                    gEngineSession = null;
+                    setEngineSession(null);
                 }
 
                 startPlayback(device, restartFromLastPosition);
@@ -330,6 +441,67 @@ var RemoteControl = (function() {
                     }
                 });
             }
+        });
+
+        // select audio track popup events
+        $("#audio-track-popup .dialog-close").on("click", function() {
+            hideAudioTrackPopup();
+        });
+
+        $(".audio-track-list").on("click", "li", function() {
+            hideAudioTrackPopup();
+
+            var itemId = $(this).data("id");
+            sendCommand("acecast_set_audio_track", {
+                track_id: itemId,
+            });
+            gDeviceStatus.selectedAudioTrack = itemId;
+        });
+
+        // select subtitle track popup events
+        $("#subtitle-track-popup .dialog-close").on("click", function() {
+            hideSubtitleTrackPopup();
+        });
+
+        $(".subtitle-track-list").on("click", "li", function() {
+            hideSubtitleTrackPopup();
+
+            var itemId = $(this).data("id");
+            sendCommand("acecast_set_subtitle_track", {
+                track_id: itemId,
+            });
+            gDeviceStatus.selectedSubtitleTrack = itemId;
+        });
+
+        // select crop popup events
+        $("#crop-popup .dialog-close").on("click", function() {
+            hideCropPopup();
+        });
+
+        $(".crop-list").on("click", "li", function() {
+            hideCropPopup();
+
+            var itemId = $(this).data("id");
+            sendCommand("acecast_set_crop", {
+                value: itemId,
+            });
+            gDeviceStatus.selectedCrop = itemId;
+        });
+
+        // select stream popup events
+        $("#stream-popup .dialog-close").on("click", function() {
+            hideStreamPopup();
+        });
+
+        $(".stream-list").on("click", "li", function() {
+            hideStreamPopup();
+
+            //TODO: handle VOD streams
+            var itemId = $(this).data("id");
+            sendCommand("acecast_set_hls_stream", {
+                stream_index: itemId,
+            });
+            setEngineStreamIndex(itemId);
         });
     }
 
@@ -409,7 +581,9 @@ var RemoteControl = (function() {
         };
 
         var params = {
-            mode: "full"
+            mode: "full",
+            expand_wrapper: 1,
+            dump_transport_file: 1,
         };
         params[type] = value;
 
@@ -434,25 +608,29 @@ var RemoteControl = (function() {
                     gPlaylist.items = [];
                     gPlaylist.currentItemIndex = -1;
                     gPlaylist.loaded = false;
+                    gPlaylist.transportFileData = response.transport_file_data;
 
-                    for(var fileIndex in response) {
-                        var item = response[fileIndex];
+                    for(var fileIndex in response.files) {
+                        var item = response.files[fileIndex];
                         gPlaylist.items.push({
                             index: fileIndex,
                             name: item.filename,
                             infohash: item.infohash,
                             type: item.type,
                             mime: item.mime,
+                            size: item.size || 0,
                         });
                     }
 
                     gPlaylist.loaded = true;
+                    onStateChanged('playlistLoaded', false, true);
+
                     if(gPlaylist.items.length > 0) {
                         setCurrentPlaylistItem(0);
                     }
 
                     if(gPlaylist.items.length > 0 && "yes" === gParams.autoplay) {
-                        restartPlayback();
+                        restartPlayback(gCurrentDevice, undefined, undefined, true);
                     }
                     else {
                         clearMessages();
@@ -464,11 +642,14 @@ var RemoteControl = (function() {
 
     function setCurrentPlaylistItem(index) {
         if(index >= 0 && index < gPlaylist.items.length) {
+            var prev = gPlaylist.currentItemIndex;
             gPlaylist.currentItemIndex = index;
-            var item = gPlaylist.items[index];
 
-            // item type
-            // updateControls(item.type == ContentType.LIVE);
+            if(index !== prev) {
+                onStateChanged('playlistItemIndex', prev, index);
+            }
+
+            var item = gPlaylist.items[index];
 
             // item title
             $("#content-title").text(item.name);
@@ -495,27 +676,6 @@ var RemoteControl = (function() {
                 else {
                     $("#btn-next").addClass("disabled");
                 }
-            }
-        }
-    }
-
-    function updateControls(is_live) {
-        var item = getCurrentPlaylistItem();
-        if(!item) {
-            return;
-        }
-
-        if(is_live) {
-            $("#progress-info").hide();
-            $("#content-info").removeClass("video").removeClass("audio").addClass("live");
-        }
-        else {
-            $("#progress-info").show();
-            if(item.mime.substring(0, 6) == "audio/") {
-                $("#content-info").removeClass("video").removeClass("live").addClass("audio");
-            }
-            else {
-                $("#content-info").removeClass("live").removeClass("audio").addClass("video");
             }
         }
     }
@@ -653,11 +813,9 @@ var RemoteControl = (function() {
 
                         if(session.is_live === 0) {
                             playlistItem.type = ContentType.VOD;
-                            updateControls(false);
                         }
                         else {
                             playlistItem.type = ContentType.LIVE;
-                            updateControls(true);
                         }
 
                         // engine returs 127.0.0.1 when called from localhost,
@@ -665,7 +823,7 @@ var RemoteControl = (function() {
                         // sending playback url to aircast device
                         session.playback_url = session.playback_url.replace("127.0.0.1", hostIp);
                         session.output_format = outputFormat;
-                        gEngineSession = session;
+                        setEngineSession(session);
 
                         onEngineSessionStarted();
                     }
@@ -675,13 +833,13 @@ var RemoteControl = (function() {
     }
 
     function play() {
-        gDeviceStatus.status = DeviceStatus.PLAYING;
+        setDeviceStatus(DeviceStatus.PLAYING);
         renderPlaybackStatus();
         sendCommand("aircast_play");
     }
 
     function pause() {
-        gDeviceStatus.status = DeviceStatus.PAUSED;
+        setDeviceStatus(DeviceStatus.PAUSED);
         renderPlaybackStatus();
         sendCommand("aircast_pause");
     }
@@ -691,7 +849,14 @@ var RemoteControl = (function() {
     }
 
     function seek(value) {
+        value = Math.ceil(value);
         sendCommand("aircast_seek", {
+            value: value
+        });
+    }
+
+    function live_seek(value) {
+        sendCommand("acecast_live_seek", {
             value: value
         });
     }
@@ -729,12 +894,12 @@ var RemoteControl = (function() {
 
         // check initial engine session
         if(gParams.engine_session_stat_url) {
-            gEngineSession = {
+            setEngineSession({
                 playback_url: gParams.engine_session_playback_url,
                 stat_url: gParams.engine_session_stat_url,
                 command_url: gParams.engine_session_command_url,
                 event_url: gParams.engine_session_event_url,
-            };
+            });
             onEngineSessionStarted();
         }
     }
@@ -751,27 +916,84 @@ var RemoteControl = (function() {
         sendCommand("aircast_get_status", function(err, status) {
             if(err) {
                 if("not_connected" === err) {
-                    gDeviceStatus.status = DeviceStatus.DISCONNECTED;
+                    setDeviceStatus(DeviceStatus.DISCONNECTED);
                 }
                 else {
                     verbose("failed to get device status", err);
-                    gDeviceStatus.status = DeviceStatus.UNKNOWN;
+                    setDeviceStatus(DeviceStatus.DISCONNECTED);
                     if(gCurrentDevice && gCurrentDevice.protocol == DeviceProtocol.AIRPLAY && "http_error_500" == err) {
                         restartAirplay();
                     }
                 }
             }
             else {
+                // for testing
+                debug("device status", status);
+
                 if(status.status == DeviceStatus.BUFFERING && status.position > gDeviceStatus.position) {
                     // changed status to PLAYING when position changes
                     status.status = DeviceStatus.PLAYING;
                 }
 
-                gDeviceStatus.status = status.status;
+                var prevAudioTracksCount = gDeviceStatus.audioTracks ? gDeviceStatus.audioTracks.length : 0;
+                var prevSubtitleTracksCount = gDeviceStatus.subtitleTracks ? gDeviceStatus.subtitleTracks.length : 0;
+
                 gDeviceStatus.volume = Math.round(status.volume * 100);
                 gDeviceStatus.position = status.position;
                 gDeviceStatus.duration = status.duration;
+                gDeviceStatus.audioTracks = status.audio_tracks;
+                gDeviceStatus.selectedAudioTrack = status.selected_audio_track;
+                gDeviceStatus.subtitleTracks = status.subtitle_tracks;
+                gDeviceStatus.selectedSubtitleTrack = status.selected_subtitle_track;
+                gDeviceStatus.cropList = status.crop_list;
+                gDeviceStatus.selectedCrop = status.selected_crop;
                 gDeviceStatus.lastSeenAt = Date.now();
+
+                var newAudioTracksCount = gDeviceStatus.audioTracks ? gDeviceStatus.audioTracks.length : 0;
+                var newSubtitleTracksCount = gDeviceStatus.subtitleTracks ? gDeviceStatus.subtitleTracks.length : 0;
+
+                if(newAudioTracksCount != prevAudioTracksCount) {
+                    onStateChanged('audioTracksCount', prevAudioTracksCount, newAudioTracksCount);
+                }
+                if(newSubtitleTracksCount != prevSubtitleTracksCount) {
+                    onStateChanged('subtitleTracksCount', prevSubtitleTracksCount, newSubtitleTracksCount);
+                }
+
+                updateContentSettings();
+
+                if(status.events && status.events.length > 0) {
+                    for(var i = 0; i < status.events.length; i++) {
+                        var eventName = status.events[i][0];
+                        var eventParams = status.events[i][1];
+
+                        // for testing
+                        debug("event", eventName, eventParams);
+
+                        if('engineSessionStarted' === eventName) {
+                            onEngineSessionStarted();
+                        }
+                        else if('engineSessionStopped' === eventName) {
+                            onEngineSessionStopped();
+                        }
+                        else if('playbackStarted' === eventName) {
+                            status.status = DeviceStatus.BUFFERING;
+                        }
+                        else if('playbackStartFailed' === eventName) {
+                            status.status = DeviceStatus.DISCONNECTED;
+                            showMessage("playerError", 40, eventParams.error);
+                        }
+                        else if('playerBuffering' === eventName) {
+                            if(eventParams.progress < 100) {
+                                status.status = DeviceStatus.BUFFERING;
+                            }
+                            else {
+                                status.status = DeviceStatus.PLAYING;
+                            }
+                        }
+                    }
+                }
+
+                setDeviceStatus(status.status);
 
                 if(gDeviceStatus.status === DeviceStatus.PLAYING) {
                     gDeviceStatus.lastPlayingAt = Date.now();
@@ -779,25 +1001,82 @@ var RemoteControl = (function() {
                     gPlaybackRestarted = false;
                     stopPlaybackStartTimer();
                 }
-
-                updateContentSettings();
             }
 
-            renderPlaybackStatus();
+            if(gDeviceStatus.status !== DeviceStatus.NO_PLAYER) {
+                renderPlaybackStatus();
+            }
+
             startDeviceStatusTimer();
         })
     }
 
     function setDeviceStatus(newStatus) {
         if(gDeviceStatus.status != newStatus) {
+            var prev = gDeviceStatus.status;
+            var wasConnected = isDeviceConnected();
             debug("device status changed: " + gDeviceStatus.status + "->" + newStatus);
+            gDeviceStatus.status = newStatus;
+            onStateChanged('deviceStatus', prev, newStatus);
+
+            var connected = isDeviceConnected();
+            if(wasConnected != connected) {
+                onStateChanged('deviceConnected', wasConnected, connected);
+            }
         }
     }
 
-    function setCurrentPosition(value) {
+    function setEngineSession(newSession) {
+        gEngineSession = newSession;
+        onStateChanged('engineSession', "?", "?");
+    }
+
+    function setEngineStatus(newValue) {
+        var prev = gEngineStatus.status;
+        gEngineStatus.status = newValue;
+        if(newValue !== prev) {
+            onStateChanged('engineStatus', prev, newValue);
+        }
+    }
+
+    function setEngineIsLive(newValue) {
+        var prev = gEngineStatus.isLive;
+        gEngineStatus.isLive = newValue;
+
+
+        if(newValue != -1) {
+            var item = getCurrentPlaylistItem();
+            if(item) {
+                item.type = (newValue == 1) ? ContentType.LIVE : ContentType.VOD;
+            }
+        }
+
+        if(newValue !== prev) {
+            onStateChanged('engineIsLive', prev, newValue);
+        }
+    }
+
+    function setEngineStreamIndex(newValue) {
+        var prev = gEngineStatus.streamIndex;
+        gEngineStatus.streamIndex = newValue;
+        if(newValue !== prev) {
+            onStateChanged('engineStreamIndex', prev, newValue);
+        }
+    }
+
+    function setEngineStreams(streams) {
+        var prevCount = gEngineStatus.streams ? gEngineStatus.streams.length : 0;
+        gEngineStatus.streams = streams;
+        var newCount = gEngineStatus.streams ? gEngineStatus.streams.length : 0;
+        if(prevCount != newCount) {
+            onStateChanged('engineStreamsCount', prevCount, newCount);
+        }
+    }
+
+    function setCurrentPosition(value, skipText) {
         if(!gProgressBar.isDragging) {
             gProgressBar.setValue(value);
-            if(!gProgressBar.isHovering) {
+            if(!skipText && !gProgressBar.isHovering) {
                 $("#text-position").text(seconds2time(value));
             }
         }
@@ -822,21 +1101,21 @@ var RemoteControl = (function() {
             duration = gDeviceStatus.duration;
             volume = gDeviceStatus.volume;
         }
-        setCurrentPosition(position);
-        gProgressBar.setMax(duration || 100);
-        setCurrentVolume(volume);
 
-        $("#text-duration").text(seconds2time(duration));
+        if(isPlayingLive() == 0) {
+            setCurrentPosition(position);
+            gProgressBar.setMax(duration || 100);
+            $("#text-duration").text(seconds2time(duration));
+        }
+        setCurrentVolume(volume);
 
         switch(gDeviceStatus.status) {
             case DeviceStatus.PLAYING:
             case DeviceStatus.BUFFERING:
-                setPlayState(PlayState.PLAYING);
                 enableProgressBar();
                 enableVolumeBar();
                 break;
             case DeviceStatus.PAUSED:
-                setPlayState(PlayState.PAUSED);
                 enableProgressBar();
                 enableVolumeBar();
                 break;
@@ -844,13 +1123,10 @@ var RemoteControl = (function() {
             case DeviceStatus.UNKNOWN:
             case DeviceStatus.FINISHED:
             case DeviceStatus.DISCONNECTED:
-                setPlayState(PlayState.PAUSED);
                 disableProgressBar();
                 disableVolumeBar();
                 break;
         }
-
-        updatePlayButton();
 
         if(gDeviceStatus.status == DeviceStatus.BUFFERING) {
             showMessage("playerStatus", 10, "_buffering_");
@@ -886,32 +1162,6 @@ var RemoteControl = (function() {
         $("#volume-bar").addClass("disabled");
         gVolumeBar.disabled = true;
         setCurrentVolume(0);
-    }
-
-    function setPlayState(state) {
-        switch(state) {
-            case PlayState.PAUSED:
-                $("#btn-play")
-                    .removeClass("restart")
-                    .addClass("paused")
-                    .data("action", "play");
-                break;
-            case PlayState.PLAYING:
-                $("#btn-play")
-                    .removeClass("paused")
-                    .removeClass("restart")
-                    .data("action", "pause");
-                break;
-            case PlayState.IDLE:
-                $("#btn-play")
-                    .removeClass("paused")
-                    .addClass("restart")
-                    .data("action", "restart");
-                break;
-            default:
-                debug("unknown play state", state);
-                break;
-        }
     }
 
     function listenEngineEvents() {
@@ -950,7 +1200,7 @@ var RemoteControl = (function() {
                         if(item) {
                             item.type = (is_live == 1) ? ContentType.LIVE : ContentType.VOD;
                         }
-                        updateControls(is_live);
+                        updateUI();
                     }
                 }
                 listenEngineEvents();
@@ -962,64 +1212,102 @@ var RemoteControl = (function() {
     }
 
     function updateEngineStatus() {
-        if(!gEngineSession) {
-            debug("updateEngineStatus: missing session");
-            return;
-        }
-        if(!gEngineSession.stat_url) {
-            debug("updateEngineStatus: missing stat url");
-            return;
-        }
-
-        var params = {};
-        if(!shouldUpdatePlayerActivity()) {
-            params['skip_player_activity'] = 1;
-        }
-
-        $.ajax({
-            method: "GET",
-            url: gEngineSession.stat_url,
-            dataType: "json",
-            data: params,
-            success: function(response) {
-                verbose("engine status", response);
-                if(response.error) {
-                    debug("updateEngineStatus: error: " + response.error);
-                    if(response.error == "unknown playback session id") {
-                        stopEngineSession();
-                    }
+        if(gCurrentDevice.protocol == DeviceProtocol.ACECAST) {
+            sendCommand("acecast_get_engine_status", function(err, response) {
+                if(err) {
+                    debug("cannot get engine status", err);
+                    return;
                 }
-                else if(!response.response) {
-                    debug("updateEngineStatus: missing response");
-                }
-                else {
-                    var r = response.response;
-                    gEngineStatus.status = r.status;
-                    gEngineStatus.playbackSessionId = r.playback_session_id;
+
+                if(response && response.status) {
+                    var r = JSON.parse(response.status)
+
+                    // for testing
+                    debug("got engine status", r);
+
+                    setEngineStatus(r.status);
+                    gEngineStatus.playbackSessionId = r.playbackSessionId;
                     gEngineStatus.progress = r.progress;
                     gEngineStatus.peers = r.peers;
-                    gEngineStatus.download = r.speed_down;
-                    gEngineStatus.upload = r.speed_up;
+                    gEngineStatus.download = r.speedDown;
+                    gEngineStatus.upload = r.speedUp;
+                    gEngineStatus.livePosition = r.livePosition;
+                    setEngineStreams(r.streams);
+                    setEngineIsLive(r.isLive);
+                    setEngineStreamIndex(r.currentStreamIndex);
+                }
+                else {
+                    // for testing
+                    setEngineStatus("unknown")
+                }
 
-                    renderEngineStatus();
+                renderEngineStatus();
+                startEngineStatusTimer();
+            });
 
-                    if(gPrebuffering && gEngineStatus.status == 'dl') {
-                        debug("finished prebuffering, start playback: gRestarting=" + gRestarting);
-                        var restartFromLastPosition = gRestarting;
-                        setPrebuffering(false);
+        }
+        else {
+            if(!gEngineSession) {
+                debug("updateEngineStatus: missing session");
+                return;
+            }
+            if(!gEngineSession.stat_url) {
+                debug("updateEngineStatus: missing stat url");
+                return;
+            }
 
-                        if(gCurrentDevice) {
-                            castToDevice(gCurrentDevice, restartFromLastPosition);
+            var params = {};
+            if(!shouldUpdatePlayerActivity()) {
+                params['skip_player_activity'] = 1;
+            }
+
+            $.ajax({
+                method: "GET",
+                url: gEngineSession.stat_url,
+                dataType: "json",
+                data: params,
+                success: function(response) {
+                    verbose("engine status", response);
+                    if(response.error) {
+                        debug("updateEngineStatus: error: " + response.error);
+                        if(response.error == "unknown playback session id") {
+                            stopEngineSession();
                         }
                     }
+                    else if(!response.response) {
+                        debug("updateEngineStatus: missing response");
+                    }
+                    else {
+                        var r = response.response;
+                        setEngineStatus(r.status);
+                        gEngineStatus.playbackSessionId = r.playback_session_id;
+                        gEngineStatus.progress = r.progress;
+                        gEngineStatus.peers = r.peers;
+                        gEngineStatus.download = r.speed_down;
+                        gEngineStatus.upload = r.speed_up;
+                        setEngineIsLive(r.is_live);
+                        setEngineStreamIndex(r.stream_index);
+
+                        renderEngineStatus();
+
+                        if(gPrebuffering && gEngineStatus.status == 'dl') {
+                            debug("finished prebuffering, start playback: gRestarting=" + gRestarting);
+                            var restartFromLastPosition = gRestarting;
+                            setPrebuffering(false);
+
+                            if(gCurrentDevice) {
+                                castToDevice(gCurrentDevice, restartFromLastPosition);
+                            }
+                        }
+                    }
+                    startEngineStatusTimer();
+                },
+                error: function(request, error_string, exception) {
+                    debug("engine status failed");
+                    startEngineStatusTimer();
                 }
-                startEngineStatusTimer();
-            },
-            error: function(request, error_string, exception) {
-                debug("engine status failed");
-                startEngineStatusTimer();
-            }
-        });
+            });
+        }
     }
 
     function renderEngineStatus() {
@@ -1029,7 +1317,10 @@ var RemoteControl = (function() {
             "&nbsp;&nbsp;UL:" + gEngineStatus.upload
             );
 
-        if(gEngineStatus.status == "prebuf") {
+        if(gEngineStatus.status == "unknown") {
+            // do nothing
+        }
+        else if(gEngineStatus.status == "prebuf") {
             showMessage("engineStatus", 20, __('prebuffering') + " " + gEngineStatus.progress + "%");
         }
         else if(gEngineStatus.status == "checking") {
@@ -1037,6 +1328,41 @@ var RemoteControl = (function() {
         }
         else {
             hideMessage("engineStatus");
+        }
+
+        if(gEngineStatus.livePosition && isPlayingLive()) {
+            var lp = gEngineStatus.livePosition;
+            if(lp.first != -1 && lp.last != -1 && lp.firstTimestamp != -1 && lp.lastTimestamp != -1 && lp.pos != -1) {
+                var duration = lp.lastTimestamp - lp.firstTimestamp;
+                var pieces = lp.last - lp.first;
+                var offset = lp.pos - lp.first;
+
+                var posAge = Date.now() - gEngineStatus.freezeLivePosAt;
+                if(!gProgressBar.isDragging && posAge > FREEZE_LIVE_POS_FOR) {
+                    gProgressBar.setMax(pieces);
+                    setCurrentPosition(offset, true);
+
+                    if(!gProgressBar.isHovering) {
+                        $("#text-position").text("-" + seconds2time(duration));
+                    }
+                    $("#text-duration").text("00:00:00");
+                }
+
+                $("#btn-go-live").show();
+
+                var statusAge = Date.now() - gEngineStatus.freezeLiveStatusAt;
+                if(statusAge > FREEZE_LIVE_STATUS_FOR) {
+                    if(lp.isLive) {
+                        $("#btn-go-live").addClass("live");
+                    }
+                    else {
+                        $("#btn-go-live").removeClass("live");
+                    }
+                }
+            }
+        }
+        else {
+            $("#btn-go-live").hide();
         }
     }
 
@@ -1155,7 +1481,9 @@ var RemoteControl = (function() {
         if(!fontSize) {
             fontSize = 28;
         }
-        //debug("showMessage: type=" + type + " priority=" + priority + " fontSize=" + fontSize + " message=" + message);
+
+        // for testing
+        debug("showMessage: type=" + type + " priority=" + priority + " fontSize=" + fontSize + " message=" + message);
 
         if(message == null) {
             return;
@@ -1187,6 +1515,9 @@ var RemoteControl = (function() {
     }
 
     function hideMessage(type) {
+        // for testing
+        debug("hideMessage", type);
+
         if(!gMessages[type]) {
             return;
         }
@@ -1259,42 +1590,12 @@ var RemoteControl = (function() {
     }
 
     function setPrebuffering(prebufering, restarting) {
+        var wasPrebuffering = prebufering;
         gPrebuffering = !!prebufering;
         gRestarting = !!restarting;
-        updatePlayButton();
-    }
 
-    function updatePlayButton() {
-        var deviceActive,
-            deviceAge = getDeviceSeenTimeout();
-
-        if(gDeviceStatus.status == DeviceStatus.IDLE || gDeviceStatus.status == DeviceStatus.UNKNOWN || gDeviceStatus.status == DeviceStatus.FINISHED) {
-            deviceActive = false;
-        }
-        else {
-            deviceActive = isDeviceConnected();
-        }
-
-        verbose("updatePlayButton: active=" + deviceActive + " prebufering=" + gPrebuffering + " age=" + deviceAge);
-
-        if(gPrebuffering) {
-            $("#btn-play").addClass("disabled");
-            setPlayState(PlayState.PAUSED);
-        }
-        else if(deviceActive) {
-            $("#btn-play").removeClass("disabled");
-        }
-        else if (isDeviceConnected() && deviceAge >= 15000 && gPlaylist.loaded) {
-            $("#btn-play").removeClass("disabled");
-            setPlayState(PlayState.IDLE);
-        }
-        else if (!isDeviceConnected() && gPlaylist.loaded && !gEngineSession) {
-            $("#btn-play").removeClass("disabled");
-            setPlayState(PlayState.IDLE);
-        }
-        else {
-            $("#btn-play").addClass("disabled");
-            setPlayState(PlayState.PAUSED);
+        if(gPrebuffering != wasPrebuffering) {
+            onStateChanged('prebuffering', wasPrebuffering, gPrebuffering);
         }
     }
 
@@ -1347,34 +1648,31 @@ var RemoteControl = (function() {
 
     }
 
-    function restartPlayback(device, restartFromLastPosition, mediaInfo) {
-        debug("restartPlayback: device="+device+" restartFromLastPosition=" + restartFromLastPosition);
+    function restartPlayback(device, restartFromLastPosition, mediaInfo, checkDevice) {
+        debug("restartPlayback: device="+device+" restartFromLastPosition=" + restartFromLastPosition + " check=" + checkDevice);
 
-        if(device === undefined) {
-            if(gLastSelectedDevice && "aircast" === gLastSelectedDevice.type) {
-                // check that device is still active
-                sendCommand("aircast_get_device", {device_id: gLastSelectedDevice.id}, function(err, response) {
-                    if(err) {
-                        debug("failed to get device info:", err);
-                        showAvailablePlayersDialog();
+        if(!device) {
+            // always select device
+            showAvailablePlayersDialog();
+            return;
+        }
+        else if(checkDevice) {
+            // check that device is still active
+            sendCommand("aircast_get_device", {device_id: device.id}, function(err, response) {
+                if(err) {
+                    debug("failed to get device info:", err);
+                    showAvailablePlayersDialog();
+                }
+                else {
+                    debug("got device info:", response);
+                    if(response.active) {
+                        restartPlayback(response, restartFromLastPosition, mediaInfo);
                     }
                     else {
-                        debug("got device info:", response);
-                        var device = response;
-                        if(device.active) {
-                            restartPlayback(device, restartFromLastPosition, mediaInfo);
-                        }
-                        else {
-                            showAvailablePlayersDialog();
-                        }
+                        showAvailablePlayersDialog();
                     }
-                });
-                device = gLastSelectedDevice;
-            }
-            else {
-                // no last aircast device, show list of available players
-                showAvailablePlayersDialog();
-            }
+                }
+            });
             return;
         }
 
@@ -1413,36 +1711,74 @@ var RemoteControl = (function() {
     }
 
     function startPlayback(device, restartFromLastPosition, mediaInfo) {
-        if(mediaInfo) {
-            castToDevice(device, restartFromLastPosition, mediaInfo);
-        }
-        else if(gEngineSession) {
-            // start casting
-            castToDevice(device, restartFromLastPosition);
-        }
-        else {
-            // start prebuffering
+        if(device.protocol == DeviceProtocol.ACECAST) {
             var playlistItem = getCurrentPlaylistItem();
             if(!playlistItem) {
                 debug("startPlayback: no current playlist item");
                 return;
             }
+
+            // for testing
+            var descriptor = "data=" + gPlaylist.contentDescriptor.type + ":" + gPlaylist.contentDescriptor.value;
+            var params = {
+                device_id: device.id,
+                transport_file_data: gPlaylist.transportFileData,
+                content_descriptor: descriptor,
+                content_type: playlistItem.type,
+                file_index: playlistItem.index,
+                mime: playlistItem.mime,
+                file_size: playlistItem.size,
+                stream_index: -1,
+            };
+
+            // for testing
+            debug("acecast_start_playback params", params);
+
             setCurrentDevice(device);
-            setPrebuffering(true, restartFromLastPosition);
+            sendCommand("acecast_start_playback", params, function(err, response) {
+                if(err) {
+                    debug("failed to start playback", err);
+                    return;
+                }
 
-            showMessage("engineStatus", 20, __('starting-etc'));
+                // for testing
+                debug("acecast_start_playback response", response);
 
-            var contentDescriptor = gPlaylist.contentDescriptor;
-            var mime = playlistItem.mime;
-            var fileIndex = playlistItem.index;
-            getOutputFormatForContent(
-                    playlistItem.type,
-                    playlistItem.mime,
-                    null,
-                    true,
-                    function(outputFormat) {
-                        initEngineSession(contentDescriptor, outputFormat, mime, fileIndex);
-                    });
+                showMessage("playerStatus", 10, "_buffering_");
+            });
+        }
+        else {
+            if(mediaInfo) {
+                castToDevice(device, restartFromLastPosition, mediaInfo);
+            }
+            else if(gEngineSession) {
+                // start casting
+                castToDevice(device, restartFromLastPosition);
+            }
+            else {
+                // start prebuffering
+                var playlistItem = getCurrentPlaylistItem();
+                if(!playlistItem) {
+                    debug("startPlayback: no current playlist item");
+                    return;
+                }
+                setCurrentDevice(device);
+                setPrebuffering(true, restartFromLastPosition);
+
+                showMessage("engineStatus", 20, __('starting-etc'));
+
+                var contentDescriptor = gPlaylist.contentDescriptor;
+                var mime = playlistItem.mime;
+                var fileIndex = playlistItem.index;
+                getOutputFormatForContent(
+                        playlistItem.type,
+                        playlistItem.mime,
+                        null,
+                        true,
+                        function(outputFormat) {
+                            initEngineSession(contentDescriptor, outputFormat, mime, fileIndex);
+                        });
+            }
         }
     }
 
@@ -1547,12 +1883,240 @@ var RemoteControl = (function() {
     }
 
     function isDeviceConnected() {
-        return gCurrentDevice && gDeviceStatus.status != DeviceStatus.DISCONNECTED;
+        return !!(gCurrentDevice && gDeviceStatus.status != DeviceStatus.DISCONNECTED);
+    }
+
+    function onStateChanged(what, oldValue, newValue) {
+        debug("onStateChanged:" + what + ": " + oldValue + "->" + newValue);
+
+        updateUI();
+    }
+
+    function setContentInfoBackground(type) {
+        if(type == "live") {
+            $("#content-info").removeClass("video").removeClass("audio").removeClass("blank").addClass("live");
+        }
+        else if(type == "audio") {
+            $("#content-info").removeClass("video").removeClass("live").removeClass("blank").addClass("audio");
+        }
+        else if(type == "video") {
+            $("#content-info").removeClass("live").removeClass("audio").removeClass("blank").addClass("video");
+        }
+        else {
+            // blank
+            $("#content-info").removeClass("live").removeClass("audio").removeClass("video").addClass("blank");
+        }
+    }
+
+    function isPlayingLive() {
+        var isLive = gEngineStatus.isLive;
+
+        if(isLive == -1) {
+            var currentPlaylistItem = getCurrentPlaylistItem();
+            if(currentPlaylistItem) {
+                if(currentPlaylistItem.type == ContentType.LIVE) {
+                    isLive = 1;
+                }
+                else {
+                    isLive = 0;
+                }
+            }
+        }
+
+        return isLive;
+    }
+
+    function updateUI() {
+        var currentPlaylistItem = getCurrentPlaylistItem();
+
+        //TODO: implement
+        var overlayVisible = false;
+        var isPrebuffering = gPrebuffering;
+        var isPlaying = false;
+        var isLive = gEngineStatus.isLive;
+        var isConnected = isDeviceConnected();
+        var isAceCast = !!(gCurrentDevice && gCurrentDevice.protocol == DeviceProtocol.ACECAST);
+        var gotLocalEngineSession = !!gEngineSession;
+
+        if(isLive == -1 && currentPlaylistItem) {
+            if(currentPlaylistItem.type == ContentType.LIVE) {
+                isLive = 1;
+            }
+            else {
+                isLive = 0;
+            }
+        }
+
+        // playing
+        if(isConnected) {
+            if(isPrebuffering) {
+                isPlaying = true;
+            }
+            else if(
+                gDeviceStatus.status == DeviceStatus.PLAYING
+                || gDeviceStatus.status == DeviceStatus.PAUSED
+                || gDeviceStatus.status == DeviceStatus.BUFFERING
+                ) {
+                isPlaying = true;
+            }
+        }
+
+        if(isPlaying || overlayVisible) {
+            setContentInfoBackground("blank");
+        }
+        else {
+            if(isLive == -1) {
+                setContentInfoBackground("blank");
+            }
+            else if(isLive == 1) {
+                setContentInfoBackground("live");
+            }
+            if(isLive == 0) {
+                if(currentPlaylistItem && currentPlaylistItem.mime.substring(0, 6) == "audio/") {
+                    setContentInfoBackground("audio");
+                }
+                else {
+                    setContentInfoBackground("video");
+                }
+            }
+        }
+
+        if(!isConnected) {
+            $("#progress-info").hide();
+        }
+        else {
+            if(isAceCast) {
+                $("#progress-info").show();
+            }
+            else {
+                if(isLive == 0) {
+                    $("#progress-info").show();
+                }
+                else {
+                    $("#progress-info").hide();
+                }
+            }
+        }
+
+        // stop/restart button
+        if(isConnected || gotLocalEngineSession) {
+            $("#btn-stop").removeClass("restart").data("action", "stop");
+        }
+        else {
+            $("#btn-stop").addClass("restart").data("action", "restart");
+        }
+
+        // select device button
+        if(isConnected) {
+            $("#btn-select-device").show();
+        }
+        else {
+            $("#btn-select-device").hide();
+        }
+
+        // play/pause buttons
+        if(isPlaying) {
+            if(gDeviceStatus.status == DeviceStatus.PLAYING) {
+                $("#btn-play").hide();
+                $("#btn-pause").show();
+            }
+            else if(gDeviceStatus.status == DeviceStatus.PAUSED) {
+                $("#btn-play").show();
+                $("#btn-pause").hide();
+            }
+            else {
+                $("#btn-play").hide();
+                $("#btn-pause").hide();
+            }
+        }
+        else {
+            $("#btn-play").hide();
+            $("#btn-pause").hide();
+        }
+
+        // acecast controls
+        if(isConnected && isAceCast) {
+            $("#btn-select-subtitle-track").show();
+            $("#btn-select-audio-track").show();
+            $("#btn-crop").show();
+
+            if(gDeviceStatus.audioTracks && gDeviceStatus.audioTracks.length > 1) {
+                $("#btn-select-audio-track").removeClass("disabled");
+            }
+            else {
+                $("#btn-select-audio-track").addClass("disabled");
+            }
+
+            if(gDeviceStatus.subtitleTracks && gDeviceStatus.subtitleTracks.length > 1) {
+                $("#btn-select-subtitle-track").removeClass("disabled");
+            }
+            else {
+                $("#btn-select-subtitle-track").addClass("disabled");
+            }
+
+        }
+        else {
+            $("#btn-select-subtitle-track").hide();
+            $("#btn-select-audio-track").hide();
+            $("#btn-crop").hide();
+        }
+
+        // streams
+        if(isConnected && isAceCast) {
+            var currentStreamName = null;
+            if(gEngineStatus.streams && gEngineStatus.streams.length > 0) {
+                currentStreamName = getCurrentStreamName();
+            }
+
+            if(currentStreamName) {
+                $("#btn-select-stream").text(currentStreamName).show();
+            }
+            else {
+                $("#btn-select-stream").hide();
+            }
+        }
+        else {
+            $("#btn-select-stream").hide();
+        }
+    }
+
+    function getCurrentStreamName(full) {
+        if(!gEngineStatus.streams) {
+            return null;
+        }
+        if(gEngineStatus.streams.length == 0) {
+            return null;
+        }
+        if(gEngineStatus.streamIndex < 0 || gEngineStatus.streamIndex >= gEngineStatus.streams.length) {
+            return null;
+        }
+
+        var stream = gEngineStatus.streams[gEngineStatus.streamIndex];
+        return getStreamName(stream, full);
+    }
+
+    function getStreamName(stream, full) {
+        var streamName;
+
+        if(!stream) {
+            return null;
+        }
+
+        if(stream.bandwidth) {
+            streamName = Math.ceil(stream.bandwidth / 1000) + " kbps";
+        }
+        else if(stream.bitrate) {
+            streamName = Math.ceil(stream.bitrate * 8 / 1000) + " kbps";
+        }
+        else {
+            streamName = "Stream " + stream.index;
+        }
+
+        return streamName;
     }
 
     function onEngineSessionStarted() {
         debug("onEngineSessionStarted");
-        $("#btn-select-device").removeClass("disabled");
         startEngineStatusTimer();
         listenEngineEvents();
     }
@@ -1562,9 +2126,7 @@ var RemoteControl = (function() {
 
         stopEngineStatusTimer();
 
-        $("#btn-select-device").addClass("disabled");
         setPrebuffering(false);
-        updatePlayButton();
         clearMessages();
 
         gEngineStatus.status = '';
@@ -1598,7 +2160,7 @@ var RemoteControl = (function() {
                 });
             }
 
-            gEngineSession = null;
+            setEngineSession(null);
             stopEngineStatusTimer();
             notifyStopped = true;
         }
@@ -1636,12 +2198,18 @@ var RemoteControl = (function() {
 
             debug("disconnect prev device: name=" + gCurrentDevice.name);
             sendCommand("aircast_disconnect");
-            gDeviceStatus.status = DeviceStatus.DISCONNECTED;
+            setDeviceStatus(DeviceStatus.DISCONNECTED);
         }
 
         if(device != null) {
+            var wasConnected = isDeviceConnected();
             gCurrentDevice = device;
             gLastSelectedDevice = device;
+
+            var connected = isDeviceConnected();
+            if(wasConnected != connected) {
+                onStateChanged("deviceConnected", wasConnected, connected);
+            }
         }
     }
 
@@ -1684,6 +2252,7 @@ var RemoteControl = (function() {
         }
     }
 
+    // select device popup
     function showSelectDevicePopup(devices) {
         var $list = $(".select-device-list");
         $list.empty();
@@ -1703,6 +2272,91 @@ var RemoteControl = (function() {
     function hideSelectDevicePopup() {
         $("#select-device-popup").parent().parent().fadeOut(150);
     }
+
+    // audio track popup
+    function showAudioTrackPopup(tracks, selectedId) {
+        var $list = $(".audio-track-list");
+        $list.empty();
+        for(var i=0, len=tracks.length; i < len; i++) {
+            var item = tracks[i];
+            var $li = $("<li>")
+            $li.html(item.name);
+            $li.data("id", item.id);
+            if(item.id == selectedId) {
+               $li.addClass("selected");
+            }
+            $list.append($li);
+        }
+        $("#audio-track-popup").parent().parent().fadeIn(150);
+    }
+
+    function hideAudioTrackPopup() {
+        $("#audio-track-popup").parent().parent().fadeOut(150);
+    }
+
+    // subtitle track popup
+    function showSubtitleTrackPopup(tracks, selectedId) {
+        var $list = $(".subtitle-track-list");
+        $list.empty();
+        for(var i=0, len=tracks.length; i < len; i++) {
+            var item = tracks[i];
+            var $li = $("<li>")
+            $li.html(item.name);
+            $li.data("id", item.id);
+            if(item.id == selectedId) {
+               $li.addClass("selected");
+            }
+            $list.append($li);
+        }
+        $("#subtitle-track-popup").parent().parent().fadeIn(150);
+    }
+
+    function hideSubtitleTrackPopup() {
+        $("#subtitle-track-popup").parent().parent().fadeOut(150);
+    }
+
+    // crop popup
+    function showCropPopup(tracks, selectedId) {
+        var $list = $(".crop-list");
+        $list.empty();
+        for(var i=0, len=tracks.length; i < len; i++) {
+            var item = tracks[i];
+            var $li = $("<li>")
+            $li.html(item.name);
+            $li.data("id", item.id);
+            if(item.id == selectedId) {
+               $li.addClass("selected");
+            }
+            $list.append($li);
+        }
+        $("#crop-popup").parent().parent().fadeIn(150);
+    }
+
+    function hideCropPopup() {
+        $("#crop-popup").parent().parent().fadeOut(150);
+    }
+
+    // stream popup
+    function showStreamPopup(streams, selectedId) {
+        var $list = $(".stream-list");
+        $list.empty();
+        for(var i=0, len=streams.length; i < len; i++) {
+            var item = streams[i];
+            var $li = $("<li>")
+            $li.html(item.name);
+            $li.data("id", item.id);
+            if(item.id == selectedId) {
+               $li.addClass("selected");
+            }
+            $list.append($li);
+        }
+        $("#stream-popup").parent().parent().fadeIn(150);
+    }
+
+    function hideStreamPopup() {
+        $("#stream-popup").parent().parent().fadeOut(150);
+    }
+    //
 
     function updateContentSettings() {
         var item = getCurrentPlaylistItem();
@@ -1863,6 +2517,38 @@ var RemoteControl = (function() {
                 showSelectDevicePopup(response.players);
             }
         });
+    }
+
+    function showAudioTrackDialog() {
+        if(gDeviceStatus && gDeviceStatus.audioTracks && gDeviceStatus.audioTracks.length > 0) {
+            showAudioTrackPopup(gDeviceStatus.audioTracks, gDeviceStatus.selectedAudioTrack);
+        }
+    }
+
+    function showSubtitleTrackDialog() {
+        if(gDeviceStatus && gDeviceStatus.subtitleTracks && gDeviceStatus.subtitleTracks.length > 0) {
+            showSubtitleTrackPopup(gDeviceStatus.subtitleTracks, gDeviceStatus.selectedSubtitleTrack);
+        }
+    }
+
+    function showCropDialog() {
+        if(gDeviceStatus && gDeviceStatus.cropList && gDeviceStatus.cropList.length > 0) {
+            showCropPopup(gDeviceStatus.cropList, gDeviceStatus.selectedCrop);
+        }
+    }
+
+    function showStreamDialog() {
+        if(gEngineStatus && gEngineStatus.streams && gEngineStatus.streams.length > 0) {
+            var streams = [];
+            for(var i = 0; i < gEngineStatus.streams.length; i++) {
+                var item = gEngineStatus.streams[i];
+                streams.push({
+                    id: item.index,
+                    name: getStreamName(item, true),
+                });
+            }
+            showStreamPopup(streams, gEngineStatus.streamIndex);
+        }
     }
 
     function shutdown() {

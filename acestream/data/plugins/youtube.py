@@ -1,4 +1,4 @@
-#-plugin-sig:H6FwancsZmGzd0ZOhf1OKEwPutzLRSdfjqQsxVQCkkpMTrn8O0cm3AveX9UyhrH4X6+tzb+MTmGGBRAD/dtKN7wyDvzLZx9NZO97iCXjX3HGkDrCAWWtrrjO2+HCc0A8XDLChiNdQw2WObCzs5PNQtgNHqsGEi7AM1iRsqtlXzo9TuelNepAvWOPoxQtZ1/TlPNvaKWFqY59etE4oT/ro2Pq9C1DI7faNThxGFVGffyB/SIwjZDuSDMhP420E1jjvHVNjsyxA6CB6CyKEGPOfcsnfOnhHapO7BXIO2hJLBzU/BdotLjj3+Rz0XRQb87uMNBnUDVjxIkbZWqRzCaQiw==
+#-plugin-sig:h2m5aSGOG8/7lyazTjNOmri2JLIJowsx5XNy2TjGGz063M26fABaSYzdkt020NvyPSj9PFTwFr0iyL/COhmyPQudMPmMwIfwzdJD86cGJllAmtx6b2Fc+SComhKydSQaDs5591mclr0Fs42tX7pkTk7RaItQ3oNRstAV3XhfdBaskVjvFJicfL7KtrSB3i8yDBYYnG2jSsxMg3NCXzl0uwC5L8/nMeLbcZygx4OuhpLwhFAU3zinYDnhlv9DJIawM90YNUXQbo5JQv5BHOu8HeG5PRKuTRTfgQW3vPjVbSUGgdfo3sMTd2ydEJxdnG4Yi/4MGoqjTINYm9RD8Byj2Q==
 import re
 
 from ACEStream.PluginsContainer.livestreamer.compat import urlparse, parse_qsl
@@ -77,7 +77,9 @@ _config_schema = validate.Schema(
         ),
         validate.optional("hlsvp"): validate.text,
         validate.optional("live_playback"): validate.transform(bool),
-        "status": validate.text
+        "status": validate.text,
+        validate.optional("reason"): validate.text,
+        validate.optional("errorcode"): validate.transform(int),
     }
 )
 _search_schema = validate.Schema(
@@ -90,6 +92,8 @@ _search_schema = validate.Schema(
     },
     validate.get("items")
 )
+
+#TODO: check "gaming.youtube.com"
 
 _channelid_re = re.compile('meta itemprop="channelId" content="([^"]+)"')
 _livechannelid_re = re.compile('meta property="og:video:url" content="([^"]+)')
@@ -194,7 +198,6 @@ class YouTube(Plugin):
 
         params = {
             "video_id": video_id,
-            "el": "player_embedded"
         }
         res = http.get(API_VIDEO_INFO, params=params, headers=HLS_HEADERS)
         return parse_query(res.text, name="config", schema=_config_schema)
@@ -203,6 +206,16 @@ class YouTube(Plugin):
         info = self._get_stream_info(self.url)
         if not info:
             return
+
+        status = info.get("status")
+        if status == 'fail':
+            errorcode = info.get('errorcode', 0)
+            if errorcode == 150:
+                # This is protected content
+                raise AccessDeniedError('Content is protected')
+            else:
+                # Don't raise specific error, just return no streams
+                return {}
 
         formats = info.get("fmt_list")
         streams = {}

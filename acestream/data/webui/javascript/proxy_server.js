@@ -68,6 +68,8 @@ function add_external_playlist()
     var category = $("#add-external-playlist-category").val(),
         name = $("#add-external-playlist-name").val().trim(),
         url = $("#add-external-playlist-url").val().trim(),
+        login = $("#add-external-playlist-http-login").val().trim(),
+        password = $("#add-external-playlist-http-password").val().trim(),
         update_interval = $("#add-external-playlist-update-interval").val(),
         mode = $("#playlist-upload-form").data("mode"),
         playlist_id = $("#playlist-upload-form").data("playlist-id");
@@ -89,7 +91,9 @@ function add_external_playlist()
         type: "content",
         category: category,
         name: name,
-        update_interval: update_interval
+        update_interval: update_interval,
+        login: login,
+        password: password,
     };
 
     if(mode == "edit") {
@@ -108,6 +112,8 @@ function add_external_playlist()
         function(response) {
             $("#add-external-playlist-name").val("");
             $("#add-external-playlist-url").val("");
+            $("#add-external-playlist-http-login").val("");
+            $("#add-external-playlist-http-password").val("");
             reload_external_playlists();
             if(mode == "add") {
                 show_page("proxy-server-playlist");
@@ -134,6 +140,8 @@ function edit_external_playlist(playlist_id)
         function(response) {
             $("#add-external-playlist-name").val(response.name);
             $("#add-external-playlist-url").val(response.url);
+            $("#add-external-playlist-http-login").val(response.login);
+            $("#add-external-playlist-http-password").val(response.password);
             $("#add-external-playlist-category option[value='"+response.category+"']").prop('selected', true);
             $("#add-external-playlist-update-interval option[value='"+response.interval+"']").prop('selected', true);
 
@@ -638,6 +646,67 @@ function show_playlist(data, total_items, page, page_size, scroll)
     });
 }
 
+function update_playlist_item_row(playlist_item) {
+    var $root = $("#playlist-item-row-" + playlist_item.id);
+    var iconHtml;
+
+    // icon
+    if(playlist_item.icons && playlist_item.icons.length) {
+        iconHtml = '<img src="'+playlist_item.icons[0].url+'" />';
+    }
+    else if(playlist_item.poster) {
+        iconHtml = '<img src="/server/api?method=get_image&url='+encodeURIComponent(playlist_item.poster)+'" />';
+    }
+
+    if(iconHtml) {
+        $root.find('.playlist-item-row-icon').html(iconHtml);
+    }
+    else {
+        $root.find('.playlist-item-row-icon').empty();
+    }
+
+    // EPG
+    var epgInfoHtml = '';
+    if(playlist_item.epg && playlist_item.epg.length) {
+        var now = moment();
+        var start = moment.unix(playlist_item.epg[0].start);
+        var stop = moment.unix(playlist_item.epg[0].stop);
+
+        var secondsPlayed = moment.duration(now.diff(start)).asSeconds();
+        var totalSeconds = playlist_item.epg[0].stop - playlist_item.epg[0].start;
+        var playedPercent = Math.round(secondsPlayed / totalSeconds * 100);
+
+        epgInfoHtml += start.format("HH:mm") + " - ";
+        epgInfoHtml += stop.format("HH:mm") + " ";
+        epgInfoHtml += playlist_item.epg[0].title;
+        epgInfoHtml += '<div style="position: relative; width: 200px; height: 10px; background-color: #ccc;">';
+        epgInfoHtml += '<div style="position: absolute; left: 0; top: 0; width: '+playedPercent+'%; height: 100%; background-color: #80AFCA;"></div>';
+        epgInfoHtml += '</div>';
+
+        $root.find('.playlist-item-row-epg-button').show();
+    }
+    else {
+        $root.find('.playlist-item-row-epg-button').hide();
+    }
+    $root.find('.playlist-item-row-epg-info').html(epgInfoHtml);
+
+    // debug info
+    var debugInfoHtml = '';
+    if(params.debug_webui_client) {
+        debugInfoHtml += '<div>infohash: ' + playlist_item.infohash + '</div>';
+        debugInfoHtml += '<div>cid: ' + playlist_item.content_id + '</div>';
+        debugInfoHtml += '<div>hash: ' + playlist_item.hash + '</div>';
+        debugInfoHtml += '<div>ctype: ' + playlist_item.content_type + '</div>';
+        debugInfoHtml += '<div>is_live: ' + playlist_item.is_live + '</div>';
+        debugInfoHtml += '<div>created at: ' + moment.unix(playlist_item.created_at).format("YYYY-MM-DD HH:mm") + '</div>';
+        debugInfoHtml += '<div>updated at: ' + moment.unix(playlist_item.updated_at).format("YYYY-MM-DD HH:mm") + '</div>';
+        if(playlist_item.last_auto_search_data) {
+            debugInfoHtml += '<div>autosearch data: ' + JSON.stringify(playlist_item.last_auto_search_data) + '</div>';
+        }
+    }
+    $root.find('.playlist-item-row-debug-info').html(debugInfoHtml);
+}
+
 function render_playlist_item_row(playlist_item)
 {
     var url, title;
@@ -673,9 +742,12 @@ function render_playlist_item_row(playlist_item)
     // icon/description
     html += '<td>';
     html += '<table class="hidden-table" cellspacing="0" cellpadding="0"><tr>';
-    html += '<td style="min-width: 50px; vertical-align: middle;">';
+    html += '<td style="min-width: 50px; vertical-align: middle;" class="playlist-item-row-icon">';
     if(playlist_item.icons && playlist_item.icons.length) {
         html += '<img src="'+playlist_item.icons[0].url+'" />';
+    }
+    else if(playlist_item.poster) {
+        html += '<img src="/server/api?method=get_image&url='+encodeURIComponent(playlist_item.poster)+'" />';
     }
     html += '</td>';
 
@@ -684,6 +756,7 @@ function render_playlist_item_row(playlist_item)
 
     // show infohash/content_id in debug mode
     if(params.debug_webui_client) {
+        html += '<div class="playlist-item-row-debug-info">';
         html += '<div>infohash: ' + playlist_item.infohash + '</div>';
         html += '<div>cid: ' + playlist_item.content_id + '</div>';
         html += '<div>hash: ' + playlist_item.hash + '</div>';
@@ -694,10 +767,10 @@ function render_playlist_item_row(playlist_item)
         if(playlist_item.last_auto_search_data) {
             html += '<div>autosearch data: ' + JSON.stringify(playlist_item.last_auto_search_data) + '</div>';
         }
+        html += '</div>';
     }
 
     if(playlist_item.epg && playlist_item.epg.length) {
-        html += '<br/>';
         var now = moment();
         var start = moment.unix(playlist_item.epg[0].start);
         var stop = moment.unix(playlist_item.epg[0].stop);
@@ -706,11 +779,13 @@ function render_playlist_item_row(playlist_item)
         var totalSeconds = playlist_item.epg[0].stop - playlist_item.epg[0].start;
         var playedPercent = Math.round(secondsPlayed / totalSeconds * 100);
 
+        html += '<div class="playlist-item-row-epg-info">';
         html += start.format("HH:mm") + " - ";
         html += stop.format("HH:mm") + " ";
         html += playlist_item.epg[0].title;
         html += '<div style="position: relative; width: 200px; height: 10px; background-color: #ccc;">';
         html += '<div style="position: absolute; left: 0; top: 0; width: '+playedPercent+'%; height: 100%; background-color: #80AFCA;"></div>';
+        html += '</div>';
         html += '</div>';
     }
     html += '</td>'
@@ -727,12 +802,19 @@ function render_playlist_item_row(playlist_item)
     html += '</a>';
     html += '</td>';
 
+    var epgButtonVisible = false;
     if(playlist_item.epg && playlist_item.epg.length) {
-        // epg button
-        html += '<td style="text-align: right; vertical-align: middle;">'
-        html += '<a href="#" class="btn btn-info white" onclick="get_epg('+playlist_item.id+', \''+playlist_item.title.replace(/'/g, "&#39;")+'\'); return false;" title="' + __('show-epg') + '">EPG</a>';
-        html += '</td>';
+        epgButtonVisible = true;
     }
+
+    // epg button
+    html += '<td class="playlist-item-row-epg-button" style="text-align: right; vertical-align: middle;';
+    if(!epgButtonVisible) {
+        html += ' display: none;';
+    }
+    html += '">';
+    html += '<a href="#" class="btn btn-info white" onclick="get_epg('+playlist_item.id+', \''+playlist_item.title.replace(/'/g, "&#39;")+'\'); return false;" title="' + __('show-epg') + '">EPG</a>';
+    html += '</td>';
 
     html += '</tr></table>';
     html += '</td>';
@@ -891,7 +973,7 @@ function reload_playlist_url(ip_list)
         ip_list = ip_list || params.ip_list,
         media_count = params.media_count || {},
         currentCategory = $("#filter-category").val(),
-        categories = ["movies", "tv", "music", "music_video", "other"],
+        categories = ["_all_", "movies", "tv", "music", "music_video", "other"],
         allow_remote_access = !!$("#allow_remote_access").is(":checked"),
         allow_intranet_access = !!$("#allow_intranet_access").is(":checked");
 
@@ -941,7 +1023,12 @@ function reload_playlist_url(ip_list)
         if(params.client_ip == "127.0.0.1") {
             // add localhost
             url = "http://127.0.0.1:"+params.http_port+"/playlist/"+params.playlist_id+".m3u";
-            category_url = url + '?category='+category;
+            if(category == "_all_") {
+                category_url = url;
+            }
+            else {
+                category_url = url + '?category='+category;
+            }
 
             if(isCurrent) {
                 $current.append('<div>'+__('local-address')+': <a href="'+category_url+'" target="_blank">'+category_url+'</a></div>');
@@ -956,7 +1043,12 @@ function reload_playlist_url(ip_list)
                 // local ip list
                 for(j=0; j<ip_list.length; j++) {
                     url = "http://"+ip_list[j]+":"+params.http_port+"/playlist/"+params.playlist_id+".m3u";
-                    category_url = url + '?category='+category;
+                    if(category == "_all_") {
+                        category_url = url;
+                    }
+                    else {
+                        category_url = url + '?category='+category;
+                    }
                     if(isCurrent) {
                         $current.append('<div>'+__('local-network')+': <a href="'+category_url+'" target="_blank">'+category_url+'</a></div>');
                     }
@@ -971,7 +1063,12 @@ function reload_playlist_url(ip_list)
             if(params.external_ip) {
                 // external ip
                 url = "http://"+params.external_ip+":"+params.http_port+"/playlist/"+params.playlist_id+".m3u";
-                category_url = url + '?category='+category;
+                if(category == "_all_") {
+                    category_url = url;
+                }
+                else {
+                    category_url = url + '?category='+category;
+                }
                 if(isCurrent) {
                     $current.append('<div>'+__('remote-access')+': <a href="'+category_url+'" target="_blank">'+category_url+'</a></div>');
                 }
@@ -1361,7 +1458,7 @@ function update_visible_playlist_items()
                     if(response.playlist) {
                         for(var i=0; i<response.playlist.length; i++) {
                             var item = response.playlist[i];
-                            $("#playlist-item-row-" + item.id).html(render_playlist_item_row(item));
+                            update_playlist_item_row(item);
                         }
                     }
                 }

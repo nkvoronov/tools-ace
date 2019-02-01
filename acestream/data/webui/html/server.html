@@ -345,7 +345,7 @@ var current_page_ = "#proxy-server-playlist",
 									<label class="control-label translate" data-string-id="filter-by-category"></label>
 									<div class="controls">
 										<select id="filter-category">
-											<!-- <option value="_all_" class="translate" data-string-id="show-all"></option> -->
+											<option value="_all_" class="translate" data-string-id="show-all"></option>
 											<option value="tv" class="translate" data-string-id="tv"></option>
 											<option value="movies" class="translate" data-string-id="movies"></option>
 											<option value="music_video" class="translate" data-string-id="music_video"></option>
@@ -411,6 +411,7 @@ var current_page_ = "#proxy-server-playlist",
 										<input style="float: left; margin-left: 10px; margin-top: 10px;" href="#proxy-server-add-item" class="btn btn-info normal translate show-page" data-string-id="add-content" data-translate-attr="value" type="button" value="Add content" />
 										<input style="float: left; margin-left: 10px; margin-top: 10px;" href="#media-server-add-playlist" class="btn btn-info normal translate action-add-playlist show-page" data-string-id="add-playlist" data-translate-attr="value" type="button" value="Add playlist" />
 										<input style="float: right; margin-right: 3px; margin-top: 10px;" class="btn btn-info normal translate action-open-playlist-url-popup" data-string-id="show-playlist-url" data-translate-attr="value" type="button" id="btn-show-playlist-url" value="Playlist URL" />
+										<input style="float: right; margin-right: 3px; margin-top: 10px;" class="btn btn-info normal translate action-export-playlist" data-string-id="export-playlist" data-translate-attr="value" type="button" id="btn-export-playlist" value="Export playlist" />
 										<a href="#" style="float: right; margin-right: 10px; margin-top: 15px;" class="menu-icon action-sync-playlist translate" data-string-id="sync-playlist" data-translate-attr="title" title="Sync playlist">
 											<i class="material-icons">sync</i>
 										</a>
@@ -680,6 +681,20 @@ var current_page_ = "#proxy-server-playlist",
                                         <label class="control-label"><span class="translate" data-string-id="url"></span>:</label>
                                         <div class="controls">
                                             <input type="text" id="add-external-playlist-url" name="url" value="" />
+                                        </div>
+                                    </div>
+
+                                    <div class="control-group">
+                                        <label class="control-label"><span class="translate" data-string-id="login"></span>:</label>
+                                        <div class="controls">
+                                            <input type="text" id="add-external-playlist-http-login" name="login" value="" />
+                                        </div>
+                                    </div>
+
+                                    <div class="control-group">
+                                        <label class="control-label"><span class="translate" data-string-id="password"></span>:</label>
+                                        <div class="controls">
+                                            <input type="text" id="add-external-playlist-http-password" name="password" value="" />
                                         </div>
                                     </div>
 

@@ -955,22 +955,22 @@ $("#btn_save_webui_password").click(function() {
 ////////////////////////////////////////////////////////////////////////////////
 // "ask question" popup
 $('#popup-ask').click(function() {
-	$('#ask').fadeIn(500);
-	$('#ask .wrap').animate({
-		top: '150px'
-	}, 500);
-	return false;
+    $('#ask').fadeIn(500);
+    $('#ask .wrap').animate({
+        top: '150px'
+    }, 500);
+    return false;
 });
 function close_ask_popup()
 {
     $('#ask .wrap').animate({
-		top: '-100%'
-	}, 500);
-	$('#ask').fadeOut(500);
+        top: '-100%'
+    }, 500);
+    $('#ask').fadeOut(500);
 }
 $('#ask .close').click(function() {
-	close_ask_popup();
-	return false;
+    close_ask_popup();
+    return false;
 });
 $("#btn-ask-form-submit").click(function() {
         support_ask_question();
@@ -983,17 +983,17 @@ function open_user_message_popup(message_id, title, text)
     $('#user-message-popup').data("message-id", message_id).fadeIn(500);
     $('#user-message-popup .widget-title h5').html(title);
     $('#user-message-popup .widget-content').html(text);
-	$('#user-message-popup .wrap').animate({
-		top: '150px'
-	}, 500);
+    $('#user-message-popup .wrap').animate({
+        top: '150px'
+    }, 500);
 }
 
 function close_user_message_popup()
 {
     $('#user-message-popup .wrap').animate({
-		top: '-100%'
-	}, 500);
-	$('#user-message-popup').fadeOut(500);
+        top: '-100%'
+    }, 500);
+    $('#user-message-popup').fadeOut(500);
 }
 
 $('#user-message-popup .ok').click(function() {
@@ -1082,12 +1082,12 @@ function close_epg_popup()
 {
     //enable_page_scrolling();
     $('#epg-popup-content').css({"height": "auto"});
-	$('#epg-popup').fadeOut(100);
+    $('#epg-popup').fadeOut(100);
 }
 
 $('#epg-popup .popup2-close').click(function() {
-	close_epg_popup();
-	return false;
+    close_epg_popup();
+    return false;
 });
 
 function disable_page_scrolling() {
@@ -1109,7 +1109,12 @@ function enable_page_scrolling() {
 function init_playlist_url_popup()
 {
     var currentCategory = $("#filter-category").val();
-    $("#playlist-url-popup .current-category-name").text(__(currentCategory));
+    if(currentCategory == "_all_") {
+        $("#playlist-url-popup .current-category-name").empty().hide();
+    }
+    else {
+        $("#playlist-url-popup .current-category-name").show().text(__(currentCategory));
+    }
 }
 
 function open_playlist_url_popup()
@@ -1139,6 +1144,11 @@ $('#playlist-url-popup .popup2-close').click(function() {
 
 $(".action-open-playlist-url-popup").on("click", function() {
     open_playlist_url_popup();
+});
+
+$(".action-export-playlist").on("click", function() {
+    var url = '/playlist/get?format=acestream&download=1';
+    window.open(url);
 });
 
 $("#playlist-url-popup .action-spoiler-toggle").on("click", function() {
@@ -1345,12 +1355,12 @@ function open_content_id_popup(anchor, playlist_item_id)
 
 function close_content_id_popup()
 {
-	$('#content-id-popup').fadeOut(100);
+    $('#content-id-popup').fadeOut(100);
 }
 
 $('#content-id-popup .popup3-close').click(function() {
-	close_content_id_popup();
-	return false;
+    close_content_id_popup();
+    return false;
 });
 
 ////////////////////////////////////////////////////////////////////////////////

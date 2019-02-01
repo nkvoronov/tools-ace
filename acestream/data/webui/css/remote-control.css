@@ -107,6 +107,10 @@ body {
     background-repeat: no-repeat;
 }
 
+#content-info.blank {
+    background-image: url(/webui/images/remote-control/rc_image_blank.png);
+}
+
 #content-info.live {
     background-image: url(/webui/images/remote-control/rc_image_live.png);
 }
@@ -205,12 +209,23 @@ body {
     justify-content: center;
 }
 
-.button {
+.buttons-container .button {
     display: block;
     cursor: pointer;
     width: 19%;
     background-repeat: no-repeat;
     background-size: contain;
+    height: 100%;
+}
+
+#content-info .button {
+    top: 0;
+    left: 0;
+    position: absolute;
+    display: block;
+    cursor: pointer;
+    width: 100%;
+    background-repeat: no-repeat;
     height: 100%;
 }
 
@@ -249,6 +264,16 @@ body {
 }
 
 #btn-play {
+    background-image: url(/webui/images/remote-control/ic_play_arrow_white_48dp.png);
+    background-position: center;
+}
+
+#btn-pause {
+    background-image: url(/webui/images/remote-control/ic_pause_white_48dp.png);
+    background-position: center;
+}
+
+/*#btn-play {
     background-image: url(/webui/images/remote-control/rc_pause_100.png);
 }
 
@@ -262,11 +287,11 @@ body {
 
 #btn-play.paused.disabled {
     background-image: url(/webui/images/remote-control/rc_play_25.png);
-}
+}*/
 
-#btn-play.restart {
-    background-size: 83% 83%;
-    background-position: center;
+#btn-stop.restart {
+    /*background-size: 83% 83%;*/
+    /*background-position: center;*/
     background-image: url(/webui/images/remote-control/rc_restart_normal.png);
 }
 
@@ -280,6 +305,45 @@ body {
 
 #btn-select-device.disabled {
     background-image: url(/webui/images/remote-control/rc_select_device_disabled.png);
+    cursor: unset;
+}
+
+#btn-crop {
+    background-image: url(/webui/images/remote-control/rc_crop_normal.png);
+}
+
+#btn-crop.pressed {
+    background-image: url(/webui/images/remote-control/rc_crop_pressed.png);
+}
+
+#btn-crop.disabled {
+    background-image: url(/webui/images/remote-control/rc_crop_disabled.png);
+    cursor: unset;
+}
+
+#btn-select-audio-track {
+    background-image: url(/webui/images/remote-control/rc_select_audio_track_normal.png);
+}
+
+#btn-select-audio-track.pressed {
+    background-image: url(/webui/images/remote-control/rc_select_audio_track_pressed.png);
+}
+
+#btn-select-audio-track.disabled {
+    background-image: url(/webui/images/remote-control/rc_select_audio_track_disabled.png);
+    cursor: unset;
+}
+
+#btn-select-subtitle-track {
+    background-image: url(/webui/images/remote-control/rc_select_subtitle_track_normal.png);
+}
+
+#btn-select-subtitle-track.pressed {
+    background-image: url(/webui/images/remote-control/rc_select_subtitle_track_pressed.png);
+}
+
+#btn-select-subtitle-track.disabled {
+    background-image: url(/webui/images/remote-control/rc_select_subtitle_track_disabled.png);
     cursor: unset;
 }
 
@@ -304,6 +368,55 @@ body {
     left: 8%;
     right: 8%;
     height: 70%;
+}
+
+#progress-info .border-button {
+    border: 1px solid #fff;
+    border-radius: 3px;
+    width: 50px;
+    height: 18px;
+    line-height: 19px;
+    font-size: 14px;
+    cursor: pointer;
+}
+
+#progress-info #btn-go-live {
+    position: absolute;
+    top: -3px;
+    right: -30px;
+    text-align: left;
+    width: 45px;
+    padding-left: 5px;
+}
+
+#progress-info #btn-go-live.live {
+    cursor: default;
+}
+
+#progress-info #btn-go-live .live-status-circle {
+    position: absolute;
+    top: 3px;
+    right: 3px;
+    width: 12px;
+    height: 12px;
+    -webkit-border-radius: 6px;
+    -moz-border-radius: 6px;
+    border-radius: 6px;
+    background-color: #FDC725;
+}
+
+#progress-info #btn-go-live.live .live-status-circle {
+    background-color: #498C9F;
+}
+
+#progress-info #btn-select-stream {
+    position: absolute;
+    top: -3px;
+    right: 93%;
+    width: auto;
+    padding: 0 5px;
+    font-size: 12px;
+    white-space: nowrap;
 }
 
 #text-position, #text-duration {
@@ -407,13 +520,13 @@ body {
     background-color: #666666;
 }
 
-.select-device-list {
+.popup-list {
     padding: 0;
     margin: 0;
     list-style-type: none;
 }
 
-.select-device-list li {
+.popup-list li {
     color: #fff;
     cursor: pointer;
     padding: 12px 16px;
@@ -421,7 +534,11 @@ body {
     font-size: 16px;
 }
 
-.select-device-list li:hover {
+.popup-list li.selected {
+    background-color: rgba(0, 0, 0, .50);
+}
+
+.popup-list li:hover {
     background-color: rgba(0, 0, 0, .25);
 }
 
@@ -451,4 +568,3 @@ body {
     #wrapper {
     }
 }
-
