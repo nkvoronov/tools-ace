@@ -1,0 +1,13 @@
+[Unit]
+Description=AceStream Engine (console)
+After=network.target
+
+[Service]
+Type=simple
+User=acestream
+Group=video
+EnvironmentFile=/etc/acestream-engine/acestream-engine.conf
+ExecStart=/usr/bin/acestreamengine-client-console --bind-all $ACE_PARAM
+
+[Install]
+WantedBy=multi-user.target

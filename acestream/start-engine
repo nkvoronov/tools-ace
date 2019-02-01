@@ -1,4 +1,0 @@
-#!/bin/sh
-
-ROOT=/usr/share/acestream
-LD_LIBRARY_PATH=${ROOT}/lib ${ROOT}/acestreamengine --lib-path $ROOT "$@"

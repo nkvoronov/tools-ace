@@ -1,0 +1,9 @@
+#!/bin/sh
+
+OPTIONS=""
+
+if [ -f /etc/default/acestream ]; then
+    . /etc/default/acestream
+fi
+
+/usr/share/acestream/start-engine --client-console "$@"
